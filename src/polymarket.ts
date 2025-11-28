@@ -71,3 +71,11 @@ export async function fetchPortfolioValue(userWallet: string): Promise<number> {
   const value = resp.data?.value ?? resp.data?.data?.value;
   return Number(value ?? 0);
 }
+
+export async function fetchLeaderValue(userWallet: string): Promise<number> {
+  try {
+    return await fetchPortfolioValue(userWallet);
+  } catch {
+    return 0;
+  }
+}

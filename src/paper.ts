@@ -1,6 +1,6 @@
 import { db, initDb } from "./db.js";
-import { WALLETS, PAPER_START_EQUITY, PAPER_SLIPPAGE_BPS } from "./config.js";
-import { fetchMarketByConditionId, fetchTradesForWallet } from "./polymarket.js";
+import { WALLETS, PAPER_START_EQUITY, PAPER_SLIPPAGE_BPS, PAPER_SIZE_MODE } from "./config.js";
+import { fetchMarketByConditionId, fetchTradesForWallet, fetchLeaderValue } from "./polymarket.js";
 
 type LeaderTradeRow = {
   id: number;
@@ -257,14 +257,28 @@ export async function runPaperOnce() {
     .get(t.condition_id, leaderWallet) as any;
     const currentExposure = posRow ? Number(posRow.size) * Number(posRow.avg_price) : 0;
     const leaderNotional = t.size * t.price;
+    const leaderValue = PAPER_SIZE_MODE === "LEADER_PCT" ? await fetchLeaderValue(t.proxy_wallet) : 0;
 
     let desiredNotional = 0;
-    if (t.side === "BUY") {
-      const available = perLeaderAllocation - currentExposure;
-      desiredNotional = Math.max(0, Math.min(available, leaderNotional));
+    if (PAPER_SIZE_MODE === "LEADER_PCT" && leaderValue > 0) {
+      const leaderPct = leaderNotional / leaderValue;
+      const target = leaderPct * perLeaderAllocation;
+      if (t.side === "BUY") {
+        const available = perLeaderAllocation - currentExposure;
+        desiredNotional = Math.max(0, Math.min(available, target));
+      } else {
+        // SELL: close proportionally but not beyond position
+        const maxSell = Math.abs(currentExposure);
+        desiredNotional = Math.max(0, Math.min(maxSell, target));
+      }
     } else {
-      // SELL: allow closing up to current exposure, but not shorting
-      desiredNotional = Math.max(0, Math.min(Math.abs(currentExposure), leaderNotional));
+      if (t.side === "BUY") {
+        const available = perLeaderAllocation - currentExposure;
+        desiredNotional = Math.max(0, Math.min(available, leaderNotional));
+      } else {
+        // SELL: allow closing up to current exposure, but not shorting
+        desiredNotional = Math.max(0, Math.min(Math.abs(currentExposure), leaderNotional));
+      }
     }
     if (desiredNotional <= 0) continue;
 

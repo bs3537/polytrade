@@ -260,8 +260,8 @@ export async function runPaperOnce() {
     const leaderValue = PAPER_SIZE_MODE === "LEADER_PCT" ? await fetchLeaderValue(t.proxy_wallet) : 0;
 
     let desiredNotional = 0;
-    if (PAPER_SIZE_MODE === "LEADER_PCT" && leaderValue > 0) {
-      const leaderPct = leaderNotional / leaderValue;
+    if (PAPER_SIZE_MODE === "LEADER_PCT") {
+      const leaderPct = leaderValue > 0 ? leaderNotional / leaderValue : 0.10; // fallback 10%
       const target = leaderPct * perLeaderAllocation;
       if (t.side === "BUY") {
         const available = perLeaderAllocation - currentExposure;

@@ -1,6 +1,6 @@
-import { db, initDb } from "./db";
-import { WALLETS, PAPER_START_EQUITY, PAPER_SLIPPAGE_BPS } from "./config";
-import { fetchMarketByConditionId, fetchTradesForWallet } from "./polymarket";
+import { db, initDb } from "./db.js";
+import { WALLETS, PAPER_START_EQUITY, PAPER_SLIPPAGE_BPS } from "./config.js";
+import { fetchMarketByConditionId, fetchTradesForWallet } from "./polymarket.js";
 
 type LeaderTradeRow = {
   id: number;

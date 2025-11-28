@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { db, initDb } from "./db";
+import { db, initDb } from "./db.js";
 
 type Rule = {
   label: string;

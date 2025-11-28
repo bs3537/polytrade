@@ -1,8 +1,8 @@
-import { WALLETS, PAPER_SLIPPAGE_BPS } from "./config";
-import { db, initDb } from "./db";
-import { fetchTradesForWallet } from "./polymarket";
+import { WALLETS, PAPER_SLIPPAGE_BPS } from "./config.js";
+import { db, initDb } from "./db.js";
+import { fetchTradesForWallet } from "./polymarket.js";
 import { setTimeout as sleep } from "timers/promises";
-import { runPaperOnce } from "./paper";
+import { runPaperOnce } from "./paper.js";
 
 const LOOP_MS = Number(process.env.PAPER_LOOP_MS ?? 10000);
 

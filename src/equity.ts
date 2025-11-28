@@ -1,5 +1,5 @@
-import { WALLETS, MY_WALLET } from "./config";
-import { fetchPortfolioValue } from "./polymarket";
+import { WALLETS, MY_WALLET } from "./config.js";
+import { fetchPortfolioValue } from "./polymarket.js";
 
 async function main() {
   if (!MY_WALLET) {

@@ -1,6 +1,6 @@
-import { initDb, db } from "./db";
-import { WALLETS, POLL_INTERVAL_MS } from "./config";
-import { fetchTradesForWallet, fetchMarketByConditionId } from "./polymarket";
+import { initDb, db } from "./db.js";
+import { WALLETS, POLL_INTERVAL_MS } from "./config.js";
+import { fetchTradesForWallet, fetchMarketByConditionId } from "./polymarket.js";
 
 initDb();
 

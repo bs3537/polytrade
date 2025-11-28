@@ -1,5 +1,5 @@
-import { db, initDb } from "./db";
-import { PAPER_START_EQUITY } from "./config";
+import { db, initDb } from "./db.js";
+import { PAPER_START_EQUITY } from "./config.js";
 
 initDb();
 

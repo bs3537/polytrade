@@ -1,5 +1,5 @@
 import axios from "axios";
-import { DATA_API_BASE, GAMMA_API_BASE } from "./config";
+import { DATA_API_BASE, GAMMA_API_BASE } from "./config.js";
 
 export type Trade = {
   transactionHash: string;

@@ -3,12 +3,30 @@ import fs from "fs";
 import path from "path";
 import { DB_PATH } from "./config.js";
 
-const dir = path.dirname(DB_PATH);
-if (dir && dir !== "." && !fs.existsSync(dir)) {
-  fs.mkdirSync(dir, { recursive: true });
+function ensurePathWritable(p: string): string {
+  const dir = path.dirname(p);
+  if (dir && dir !== "." && !fs.existsSync(dir)) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      return p;
+    } catch {
+      // fall through to fallback
+    }
+  }
+  return p;
 }
 
-export const db = new Database(DB_PATH);
+let resolvedPath = DB_PATH;
+resolvedPath = ensurePathWritable(resolvedPath);
+
+// If absolute /data is not writable (no Render disk), fall back to local ./data
+if (!fs.existsSync(path.dirname(resolvedPath))) {
+  const fallback = path.resolve("data", path.basename(DB_PATH));
+  fs.mkdirSync(path.dirname(fallback), { recursive: true });
+  resolvedPath = fallback;
+}
+
+export const db = new Database(resolvedPath);
 
 export function initDb() {
   db.exec(`

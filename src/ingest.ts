@@ -1,6 +1,6 @@
-import { initDb, db } from "./db.ts";
-import { WALLETS, POLL_INTERVAL_MS } from "./config.ts";
-import { fetchTradesForWallet, fetchMarketByConditionId } from "./polymarket.ts";
+import { initDb, db } from "./db";
+import { WALLETS, POLL_INTERVAL_MS } from "./config";
+import { fetchTradesForWallet, fetchMarketByConditionId } from "./polymarket";
 
 initDb();
 

@@ -1,6 +1,6 @@
-import { db, initDb } from "./db.ts";
-import { WALLETS, PAPER_START_EQUITY, PAPER_SLIPPAGE_BPS } from "./config.ts";
-import { fetchMarketByConditionId, fetchTradesForWallet } from "./polymarket.ts";
+import { db, initDb } from "./db";
+import { WALLETS, PAPER_START_EQUITY, PAPER_SLIPPAGE_BPS } from "./config";
+import { fetchMarketByConditionId, fetchTradesForWallet } from "./polymarket";
 
 type LeaderTradeRow = {
   id: number;
@@ -21,7 +21,7 @@ const setState = db.prepare(
 );
 
 function getLastProcessedId(): number {
-  const row = getState.get("last_trade_id");
+  const row = getState.get("last_trade_id") as any;
   return row ? Number(row.value) : 0;
 }
 
@@ -30,7 +30,7 @@ function setLastProcessedId(id: number) {
 }
 
 function getStartTimestamp(): number {
-  const row = getState.get("paper_start_ts");
+  const row = getState.get("paper_start_ts") as any;
   if (row) return Number(row.value);
   const now = Date.now();
   setState.run("paper_start_ts", String(now));
@@ -38,11 +38,11 @@ function getStartTimestamp(): number {
 }
 
 function ensureStartingPortfolio() {
-  const cashRow = getState.get("paper_cash");
+  const cashRow = getState.get("paper_cash") as any;
   if (!cashRow) {
     setState.run("paper_cash", String(PAPER_START_EQUITY));
   }
-  const realizedRow = getState.get("paper_realized");
+  const realizedRow = getState.get("paper_realized") as any;
   if (!realizedRow) {
     setState.run("paper_realized", "0");
   }
@@ -55,12 +55,12 @@ function ensureStartingPortfolio() {
 }
 
 function currentCash(): number {
-  const row = getState.get("paper_cash");
+  const row = getState.get("paper_cash") as any;
   return row ? Number(row.value) : PAPER_START_EQUITY;
 }
 
 function currentRealized(): number {
-  const row = getState.get("paper_realized");
+  const row = getState.get("paper_realized") as any;
   return row ? Number(row.value) : 0;
 }
 
@@ -82,7 +82,7 @@ function upsertPosition(
     .prepare(
       "SELECT size, avg_price FROM paper_positions WHERE condition_id=? AND outcome IS ? AND leader_wallet=?"
     )
-    .get(conditionId, outcome, leaderWallet);
+    .get(conditionId, outcome, leaderWallet) as any;
 
   let newSize = size * (side === "BUY" ? 1 : -1);
   let newAvg = price;
@@ -149,19 +149,19 @@ function recordFill(t: LeaderTradeRow, size: number, price: number, ruleLabel = 
 }
 
 function latestPricesMap(): Record<string, number> {
-  return db
+  const rows = db
     .prepare(
       "SELECT condition_id, price FROM leader_trades lt WHERE timestamp = (SELECT MAX(timestamp) FROM leader_trades lt2 WHERE lt2.condition_id = lt.condition_id)"
     )
-    .all()
-    .reduce((m: Record<string, number>, r: any) => {
-      m[r.condition_id] = Number(r.price);
-      return m;
-    }, {});
+    .all() as any[];
+  return rows.reduce((m: Record<string, number>, r: any) => {
+    m[r.condition_id] = Number(r.price);
+    return m;
+  }, {});
 }
 
 function getPositionValue(): number {
-  const rows = db.prepare("SELECT size, avg_price, condition_id FROM paper_positions").all();
+    const rows = db.prepare("SELECT size, avg_price, condition_id FROM paper_positions").all() as any[];
   const latest = latestPricesMap();
   return rows.reduce((acc, r) => {
     const mark = latest[r.condition_id] ?? Number(r.avg_price);
@@ -171,7 +171,7 @@ function getPositionValue(): number {
 
 function snapshotPortfolio() {
   const cash = currentCash();
-  const posRows = db.prepare("SELECT size, avg_price, condition_id FROM paper_positions").all();
+  const posRows = db.prepare("SELECT size, avg_price, condition_id FROM paper_positions").all() as any[];
   const latest = latestPricesMap();
   const posValue = posRows.reduce((acc, r) => {
     const mark = latest[r.condition_id] ?? Number(r.avg_price);
@@ -226,11 +226,11 @@ export async function runPaperOnce() {
   }
 
   const lastId = getLastProcessedId();
-  const pending: LeaderTradeRow[] = db
+  const pending = db
     .prepare(
       "SELECT id, proxy_wallet, condition_id, side, size, price, timestamp FROM leader_trades WHERE id > ? AND timestamp >= ? ORDER BY id ASC"
     )
-    .all(lastId, startTs);
+    .all(lastId, startTs) as any as LeaderTradeRow[];
 
   if (pending.length === 0) {
     console.log("No new leader trades to simulate.");
@@ -250,11 +250,11 @@ export async function runPaperOnce() {
       t.side === "BUY" ? t.price * (1 + slip) : t.price * (1 - slip);
 
     // Compute existing position notional for this leader
-    const posRow = db
-      .prepare(
-        "SELECT size, avg_price FROM paper_positions WHERE condition_id=? AND outcome IS NULL AND leader_wallet=?"
-      )
-      .get(t.condition_id, leaderWallet);
+  const posRow = db
+    .prepare(
+      "SELECT size, avg_price FROM paper_positions WHERE condition_id=? AND outcome IS NULL AND leader_wallet=?"
+    )
+    .get(t.condition_id, leaderWallet) as any;
     const currentExposure = posRow ? Number(posRow.size) * Number(posRow.avg_price) : 0;
     const leaderNotional = t.size * t.price;
 

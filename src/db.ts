@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
-import { DB_PATH } from "./config.ts";
+import { DB_PATH } from "./config";
 
 const dir = path.dirname(DB_PATH);
 if (dir && dir !== "." && !fs.existsSync(dir)) {

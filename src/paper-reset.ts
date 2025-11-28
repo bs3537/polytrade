@@ -1,5 +1,5 @@
-import { db, initDb } from "./db.ts";
-import { PAPER_START_EQUITY } from "./config.ts";
+import { db, initDb } from "./db";
+import { PAPER_START_EQUITY } from "./config";
 
 initDb();
 

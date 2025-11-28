@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { db, initDb } from "./db.ts";
+import { db, initDb } from "./db";
 
 type Rule = {
   label: string;
@@ -27,7 +27,7 @@ const trades = db
     ORDER BY lt.timestamp ASC
   `
   )
-  .all();
+  .all() as any[];
 
 const insertIntent = db.prepare(`
   INSERT OR IGNORE INTO copy_orders_intent

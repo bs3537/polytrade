@@ -1,0 +1,32 @@
+{
+  "name": "polymarket-copy-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "ingest": "ts-node-esm src/ingest.ts",
+    "simulate": "ts-node-esm src/simulate.ts",
+    "equity": "ts-node-esm src/equity.ts",
+    "paper": "ts-node-esm src/paper.ts",
+    "paper:reset": "ts-node-esm src/paper-reset.ts",
+    "paper:daemon": "ts-node-esm src/paper-daemon.ts",
+    "dashboard": "ts-node-esm src/dashboard.ts",
+    "start:render": "bash -c \"npm run paper:reset && npm run paper:daemon & npm run dashboard\"",
+    "lint": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "better-sqlite3": "^9.4.3",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.27.2",
+    "@fastify/static": "^6.10.2",
+    "@fastify/cors": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.9.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,0 +1,11 @@
+[
+  {
+    "label": "Copy leader wallets 1% equity per trade (sim only)",
+    "wallets": ["0x6ffb4354cbe6e0f9989e3b55564ec5fb8646a834", "0x8904971e45b827e6dd83c1656d633335e09880a3"],
+    "mode": "COPY",
+    "sizeMode": "FIXED_USDC",
+    "fixedUsdc": 25,
+    "maxUsdcPerTrade": 50,
+    "allowedCategories": ["Politics", "Economics"]
+  }
+]

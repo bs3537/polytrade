@@ -182,7 +182,7 @@ function snapshotPortfolio() {
     return acc + Number(r.size) * (mark - Number(r.avg_price));
   }, 0);
   const realized = currentRealized();
-  const equity = cash + posValue + unreal;
+  const equity = cash + posValue; // unreal and realized are informational; cash already includes realized PnL
   db.prepare(
     "INSERT INTO paper_portfolio(timestamp, equity, cash, unrealized, realized) VALUES (strftime('%s','now')*1000, ?, ?, ?, ?)"
   ).run(equity, cash, unreal, realized);

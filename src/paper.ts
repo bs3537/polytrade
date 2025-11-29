@@ -84,11 +84,12 @@ function upsertPosition(
   price: number,
   timestamp: number
 ): number /* realizedDelta */ {
+  const normalizedOutcome = outcome ?? "";
   const row = db
     .prepare(
-      "SELECT size, avg_price FROM paper_positions WHERE condition_id=? AND outcome IS ? AND leader_wallet=?"
+      "SELECT size, avg_price FROM paper_positions WHERE condition_id=? AND outcome=? AND leader_wallet=?"
     )
-    .get(conditionId, outcome, leaderWallet) as any;
+    .get(conditionId, normalizedOutcome, leaderWallet) as any;
 
   let newSize = size * (side === "BUY" ? 1 : -1);
   let newAvg = price;
@@ -106,8 +107,8 @@ function upsertPosition(
         realizedDelta += (price - prevAvg) * Math.min(Math.abs(size), Math.abs(prevSize));
       }
       db.prepare(
-        "DELETE FROM paper_positions WHERE condition_id=? AND outcome IS ? AND leader_wallet=?"
-      ).run(conditionId, outcome, leaderWallet);
+        "DELETE FROM paper_positions WHERE condition_id=? AND outcome=? AND leader_wallet=?"
+      ).run(conditionId, normalizedOutcome, leaderWallet);
       return realizedDelta;
     }
 
@@ -127,7 +128,7 @@ function upsertPosition(
 
   db.prepare(
     "INSERT INTO paper_positions(condition_id, outcome, leader_wallet, size, avg_price, updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(condition_id, outcome, leader_wallet) DO UPDATE SET size=excluded.size, avg_price=excluded.avg_price, updated_at=excluded.updated_at"
-  ).run(conditionId, outcome, leaderWallet, newSize, newAvg, timestamp);
+  ).run(conditionId, normalizedOutcome, leaderWallet, newSize, newAvg, timestamp);
 
   return realizedDelta;
 }
@@ -271,7 +272,7 @@ export async function runPaperOnce(opts: RunOpts = {}) {
     // Compute existing position notional for this leader
   const posRow = db
     .prepare(
-      "SELECT size, avg_price FROM paper_positions WHERE condition_id=? AND outcome IS NULL AND leader_wallet=?"
+      "SELECT size, avg_price FROM paper_positions WHERE condition_id=? AND outcome='' AND leader_wallet=?"
     )
     .get(t.condition_id, leaderWallet) as any;
     const currentExposure = posRow ? Number(posRow.size) * Number(posRow.avg_price) : 0;

@@ -86,7 +86,7 @@ export function initDb() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS paper_positions (
       condition_id TEXT NOT NULL,
-      outcome TEXT,
+      outcome TEXT NOT NULL DEFAULT '',
       leader_wallet TEXT NOT NULL,
       size REAL NOT NULL,
       avg_price REAL NOT NULL,

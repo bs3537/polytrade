@@ -42,7 +42,7 @@ async function ingestOnce() {
 
   for (const wallet of WALLETS) {
     try {
-      const trades = await fetchTradesForWallet(wallet);
+      const trades = await fetchTradesForWallet(wallet, 500);
       for (const t of trades) {
         insertTrade.run({
           proxyWallet: t.proxyWallet,

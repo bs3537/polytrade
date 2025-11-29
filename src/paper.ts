@@ -226,7 +226,7 @@ export async function runPaperOnce(opts: RunOpts = {}) {
     `);
 
     for (const w of WALLETS) {
-      const trades = await fetchTradesForWallet(w);
+      const trades = await fetchTradesForWallet(w, 500);
       for (const t of trades) {
         insertTrade.run({
           proxyWallet: t.proxyWallet,

@@ -16,7 +16,7 @@ async function ingestOnce() {
       (@proxyWallet, @transactionHash, @conditionId, @assetId, @side, @size, @price, @timestamp, @marketSlug, @marketTitle);
   `);
   for (const w of WALLETS) {
-    const trades = await fetchTradesForWallet(w);
+    const trades = await fetchTradesForWallet(w, 500);
     for (const t of trades) {
       insertTrade.run({
         proxyWallet: t.proxyWallet,
@@ -71,7 +71,11 @@ async function loop() {
 
   while (true) {
     try {
+      // Always run ingest to avoid missing RTDS drops; HISTORICAL_INGEST_ENABLED keeps backward compatibility for full history pulls.
       if (HISTORICAL_INGEST_ENABLED) {
+        await ingestOnce();
+      } else {
+        // Light ingest even when historical disabled to catch recent trades.
         await ingestOnce();
       }
       await runPaperOnce({ fetchHistorical: HISTORICAL_INGEST_ENABLED });

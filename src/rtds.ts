@@ -34,6 +34,8 @@ export function startRTDS(onTrade: Handler) {
     ws.send(JSON.stringify(sub));
   });
 
+  let seen = 0;
+
   ws.on("message", async (data: WebSocket.RawData) => {
     try {
       const msg = JSON.parse(data.toString());
@@ -55,6 +57,10 @@ export function startRTDS(onTrade: Handler) {
         marketSlug: t.market?.slug ?? t.slug,
         marketQuestion: t.market?.question ?? t.question,
       };
+      seen += 1;
+      if (seen % 20 === 0) {
+        console.log(`[rtds] ${seen} trades seen; last wallet ${wallet} market ${trade.marketSlug ?? ""}`);
+      }
       await onTrade(trade);
     } catch (err) {
       // swallow parse errors

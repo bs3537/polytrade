@@ -20,10 +20,6 @@ async function build() {
     wildcard: false,
   });
 
-  fastify.get("/", async (_req, reply) => {
-    return reply.sendFile("index.html");
-  });
-
   fastify.get("/api/portfolio", async () => {
     // Recompute live to avoid stale snapshots
     const positions = db

@@ -27,6 +27,8 @@ if (!fs.existsSync(path.dirname(resolvedPath))) {
 }
 
 export const db = new Database(resolvedPath);
+db.pragma("busy_timeout = 3000");
+db.pragma("journal_mode = WAL");
 
 export function initDb() {
   db.exec(`

@@ -12,6 +12,7 @@ export const PAPER_START_EQUITY = Number(process.env.PAPER_START_EQUITY ?? 10000
 export const PAPER_SLIPPAGE_BPS = Number(process.env.PAPER_SLIPPAGE_BPS ?? 50); // 0.50%
 export const PAPER_SIZE_MODE = (process.env.PAPER_SIZE_MODE ?? "LEADER_PCT").toUpperCase(); // LEADER_PCT | FIXED
 export const RTDS_ENABLED = (process.env.RTDS_ENABLED ?? "true").toLowerCase() === "true";
+export const HISTORICAL_INGEST_ENABLED = (process.env.HISTORICAL_INGEST_ENABLED ?? "true").toLowerCase() === "true";
 
 export const WALLETS = (process.env.WALLETS ?? "")
   .split(",")

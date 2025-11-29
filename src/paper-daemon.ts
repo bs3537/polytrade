@@ -1,4 +1,4 @@
-import { WALLETS, PAPER_SLIPPAGE_BPS } from "./config.js";
+import { WALLETS, PAPER_SLIPPAGE_BPS, HISTORICAL_INGEST_ENABLED } from "./config.js";
 import { db, initDb } from "./db.js";
 import { fetchTradesForWallet, fetchMarketByConditionId } from "./polymarket.js";
 import { setTimeout as sleep } from "timers/promises";
@@ -59,15 +59,22 @@ async function saveTrade(t: any) {
 async function loop() {
   initDb();
 
-  // Start RTDS listener
+  // Start RTDS listener: save trade, then process pending trades without pulling history
   startRTDS(async (trade) => {
     await saveTrade(trade);
+    try {
+      await runPaperOnce({ fetchHistorical: false });
+    } catch (err) {
+      console.error("paper loop (RTDS) error", err);
+    }
   });
 
   while (true) {
     try {
-      await ingestOnce();
-      await runPaperOnce();
+      if (HISTORICAL_INGEST_ENABLED) {
+        await ingestOnce();
+      }
+      await runPaperOnce({ fetchHistorical: HISTORICAL_INGEST_ENABLED });
     } catch (err) {
       console.error("daemon error", err);
     }

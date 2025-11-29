@@ -1,5 +1,11 @@
 import { db, initDb } from "./db.js";
-import { WALLETS, PAPER_START_EQUITY, PAPER_SLIPPAGE_BPS, PAPER_SIZE_MODE } from "./config.js";
+import {
+  WALLETS,
+  PAPER_START_EQUITY,
+  PAPER_SLIPPAGE_BPS,
+  PAPER_SIZE_MODE,
+  HISTORICAL_INGEST_ENABLED,
+} from "./config.js";
 import { fetchMarketByConditionId, fetchTradesForWallet, fetchLeaderValue } from "./polymarket.js";
 
 type LeaderTradeRow = {
@@ -196,7 +202,11 @@ function snapshotPortfolio() {
   ).run(equity, cash, unreal, realized);
 }
 
-export async function runPaperOnce() {
+type RunOpts = { fetchHistorical?: boolean };
+
+export async function runPaperOnce(opts: RunOpts = {}) {
+  const fetchHistorical = opts.fetchHistorical ?? true;
+
   if (WALLETS.length === 0) {
     console.warn("No WALLETS configured; skipping paper simulation loop.");
     return;
@@ -206,30 +216,31 @@ export async function runPaperOnce() {
   ensureStartingPortfolio();
   const startTs = getStartTimestamp();
 
-  // Pull fresh trades for all wallets and store them in leader_trades table for consistency.
-  // (Reuse ingest logic lightly: fetch and insert.)
-  const insertTrade = db.prepare(`
-    INSERT OR IGNORE INTO leader_trades
-      (proxy_wallet, transaction_hash, condition_id, asset_id, side, size, price, timestamp, market_slug, market_title)
-    VALUES
-      (@proxyWallet, @transactionHash, @conditionId, @assetId, @side, @size, @price, @timestamp, @marketSlug, @marketTitle);
-  `);
+  if (fetchHistorical && HISTORICAL_INGEST_ENABLED) {
+    // Pull fresh trades for all wallets and store them in leader_trades table for consistency.
+    const insertTrade = db.prepare(`
+      INSERT OR IGNORE INTO leader_trades
+        (proxy_wallet, transaction_hash, condition_id, asset_id, side, size, price, timestamp, market_slug, market_title)
+      VALUES
+        (@proxyWallet, @transactionHash, @conditionId, @assetId, @side, @size, @price, @timestamp, @marketSlug, @marketTitle);
+    `);
 
-  for (const w of WALLETS) {
-    const trades = await fetchTradesForWallet(w);
-    for (const t of trades) {
-      insertTrade.run({
-        proxyWallet: t.proxyWallet,
-        transactionHash: t.transactionHash,
-        conditionId: t.conditionId,
-        assetId: t.assetId,
-        side: t.side,
-        size: t.size,
-        price: t.price,
-        timestamp: t.timestamp,
-        marketSlug: t.marketSlug,
-        marketTitle: t.marketQuestion,
-      });
+    for (const w of WALLETS) {
+      const trades = await fetchTradesForWallet(w);
+      for (const t of trades) {
+        insertTrade.run({
+          proxyWallet: t.proxyWallet,
+          transactionHash: t.transactionHash,
+          conditionId: t.conditionId,
+          assetId: t.assetId,
+          side: t.side,
+          size: t.size,
+          price: t.price,
+          timestamp: t.timestamp,
+          marketSlug: t.marketSlug,
+          marketTitle: t.marketQuestion,
+        });
+      }
     }
   }
 

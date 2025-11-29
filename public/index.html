@@ -124,6 +124,28 @@
       .pnld {
         color: var(--danger);
       }
+      .tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .tab-btn {
+        padding: 6px 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .tab-btn.active {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: rgba(104, 212, 255, 0.08);
+      }
+      canvas {
+        max-width: 100%;
+      }
       @media (max-width: 640px) {
         header {
           padding: 16px;
@@ -185,8 +207,26 @@
           <tbody></tbody>
         </table>
       </div>
+
+      <div class="card" style="margin-top: 14px">
+        <div class="row" style="justify-content: space-between; align-items: center">
+          <div>
+            <div class="muted">Equity Curve</div>
+            <div class="metric" style="font-size: 18px">Paper account</div>
+          </div>
+          <div class="tabs" id="eq-tabs">
+            <button class="tab-btn active" data-ival="300">5m</button>
+            <button class="tab-btn" data-ival="1800">30m</button>
+            <button class="tab-btn" data-ival="3600">1h</button>
+            <button class="tab-btn" data-ival="86400">1d</button>
+            <button class="tab-btn" data-ival="604800">1w</button>
+          </div>
+        </div>
+        <canvas id="eq-chart" height="120"></canvas>
+      </div>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
       const fmtUSD = (v) =>
         (v || 0).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
@@ -254,6 +294,63 @@
         });
       }
 
+      let eqChart;
+      let currentInterval = 300;
+
+      async function loadEquity(intervalSec = 300) {
+        const data = await fetchJSON(`/api/equity?intervalSec=${intervalSec}&limit=400`);
+        const labels = data.map((d) => new Date(d.timestamp).toLocaleTimeString());
+        const values = data.map((d) => d.equity);
+        if (!eqChart) {
+          const ctx = document.getElementById("eq-chart").getContext("2d");
+          eqChart = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: "Equity",
+                  data: values,
+                  borderColor: "#68d4ff",
+                  backgroundColor: "rgba(104,212,255,0.1)",
+                  tension: 0.25,
+                  fill: true,
+                },
+              ],
+            },
+            options: {
+              scales: {
+                x: {
+                  ticks: { color: "rgba(255,255,255,0.6)", maxTicksLimit: 6 },
+                  grid: { display: false },
+                },
+                y: {
+                  ticks: { color: "rgba(255,255,255,0.6)" },
+                  grid: { color: "rgba(255,255,255,0.05)" },
+                },
+              },
+              plugins: { legend: { display: false } },
+            },
+          });
+        } else {
+          eqChart.data.labels = labels;
+          eqChart.data.datasets[0].data = values;
+          eqChart.update();
+        }
+      }
+
+      function bindTabs() {
+        const tabs = document.querySelectorAll("#eq-tabs .tab-btn");
+        tabs.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            tabs.forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            currentInterval = Number(btn.dataset.ival);
+            loadEquity(currentInterval);
+          });
+        });
+      }
+
       async function refresh() {
         try {
           const [portfolio, positions, fills] = await Promise.all([
@@ -264,12 +361,14 @@
           renderMetrics(portfolio);
           renderPositions(positions);
           renderFills(fills);
+          await loadEquity(currentInterval);
           document.getElementById("updated").textContent = "Updated " + new Date().toLocaleTimeString();
         } catch (e) {
           document.getElementById("updated").textContent = "Error: " + e.message;
         }
       }
 
+      bindTabs();
       refresh();
       setInterval(refresh, 5000);
     </script>

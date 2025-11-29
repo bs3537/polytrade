@@ -67,6 +67,32 @@ async function build() {
     return rows;
   });
 
+  fastify.get("/api/equity", async (req) => {
+    const q = (req.query ?? {}) as any;
+    const intervalSec = Number(q.intervalSec ?? 300); // default 5m
+    const limit = Number(q.limit ?? 288); // default ~24h at 5m
+
+    // Pick the latest sample per bucket
+    const rows = db
+      .prepare(
+        `
+        WITH buckets AS (
+          SELECT CAST(timestamp/1000/? AS INT) AS bucket, MAX(timestamp) AS max_ts
+          FROM paper_portfolio
+          GROUP BY bucket
+          ORDER BY max_ts DESC
+          LIMIT ?
+        )
+        SELECT p.timestamp, p.equity, p.cash, p.unrealized, p.realized
+        FROM paper_portfolio p
+        JOIN buckets b ON p.timestamp = b.max_ts
+        ORDER BY p.timestamp ASC
+      `
+      )
+      .all(intervalSec, limit);
+    return rows;
+  });
+
   fastify.setNotFoundHandler((req, reply) => {
     reply.redirect("/");
   });

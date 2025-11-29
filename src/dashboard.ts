@@ -24,6 +24,8 @@ async function build() {
     wildcard: false,
   });
 
+  fastify.get("/healthz", async () => ({ ok: true }));
+
   fastify.get("/api/portfolio", async () => {
     console.log("portfolio: start");
     // Recompute live to avoid stale snapshots
@@ -161,6 +163,11 @@ async function build() {
 
   fastify.setNotFoundHandler((req, reply) => {
     reply.redirect("/");
+  });
+
+  fastify.setErrorHandler((error, _request, reply) => {
+    console.error("dashboard error", error);
+    reply.status(500).send({ error: error.message ?? "internal error" });
   });
 
   const port = Number(process.env.PORT ?? process.env.DASHBOARD_PORT ?? 3000);

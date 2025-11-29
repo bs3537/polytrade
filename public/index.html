@@ -228,6 +228,29 @@
         </table>
       </div>
 
+      <div class="card" style="margin-top: 14px">
+        <div class="row" style="justify-content: space-between; align-items: center">
+          <div>
+            <div class="muted">Closed / Reduced Positions</div>
+            <div class="metric" style="font-size: 18px">Recent sells</div>
+          </div>
+        </div>
+        <table id="closed-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Leader</th>
+              <th>Side</th>
+              <th>Size</th>
+              <th>Price</th>
+              <th>Notional</th>
+              <th>Market</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -283,6 +306,26 @@
 
       function renderFills(rows) {
         const body = document.querySelector("#fills-table tbody");
+        body.innerHTML = "";
+        rows.forEach((r) => {
+          const tr = document.createElement("tr");
+          const sideColor = r.side === "BUY" ? "var(--success)" : "var(--danger)";
+          const date = new Date(r.timestamp).toLocaleTimeString();
+          tr.innerHTML = `
+            <td>${date}</td>
+            <td>${r.leader_wallet.slice(0, 6)}…${r.leader_wallet.slice(-4)}</td>
+            <td style="color:${sideColor}">${r.side}</td>
+            <td>${fmtNum(r.size)}</td>
+            <td>${fmtNum(r.price)}</td>
+            <td>${fmtUSD(r.notional)}</td>
+            <td>${r.title || r.condition_id.slice(0, 8) + "…"}</td>
+          `;
+          body.appendChild(tr);
+        });
+      }
+
+      function renderClosed(rows) {
+        const body = document.querySelector("#closed-table tbody");
         body.innerHTML = "";
         rows.forEach((r) => {
           const tr = document.createElement("tr");
@@ -360,14 +403,16 @@
 
       async function refresh() {
         try {
-          const [portfolio, positions, fills] = await Promise.all([
+          const [portfolio, positions, fills, closed] = await Promise.all([
             fetchJSON("/api/portfolio"),
             fetchJSON("/api/positions"),
             fetchJSON("/api/fills?limit=50"),
+            fetchJSON("/api/closed?limit=50"),
           ]);
           renderMetrics(portfolio);
           renderPositions(positions);
           renderFills(fills);
+          renderClosed(closed);
           await loadEquity(currentInterval);
           document.getElementById("updated").textContent = "Updated " + new Date().toLocaleTimeString();
         } catch (e) {

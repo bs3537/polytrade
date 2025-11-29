@@ -62,6 +62,23 @@ async function build() {
     });
   });
 
+  fastify.get("/api/closed", async (req) => {
+    const limit = Number((req.query as any)?.limit ?? 50);
+    const rows = db
+      .prepare(
+        `SELECT f.id, f.leader_wallet, f.condition_id, f.side, f.price, f.size, f.notional,
+                f.timestamp, COALESCE(m.title, lt.market_title) as title
+         FROM paper_fills f
+         LEFT JOIN leader_trades lt ON lt.id = f.leader_trade_id
+         LEFT JOIN markets m ON m.condition_id = f.condition_id
+         WHERE f.side = 'SELL' -- proxy: sells often close/reduce; we compute realized from fills
+         ORDER BY f.id DESC
+         LIMIT ?`
+      )
+      .all(limit);
+    return rows;
+  });
+
   fastify.get("/api/fills", async (req) => {
     const limit = Number((req.query as any)?.limit ?? 50);
     const rows = db

@@ -148,7 +148,7 @@ async function build() {
     reply.redirect("/");
   });
 
-  const port = Number(process.env.PORT ?? 3000);
+  const port = Number(process.env.PORT ?? process.env.DASHBOARD_PORT ?? 3000);
   await fastify.listen({ port, host: "0.0.0.0" });
   console.log(`Dashboard running at http://localhost:${port}`);
 }

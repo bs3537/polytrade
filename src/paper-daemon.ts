@@ -6,6 +6,7 @@ import { runPaperOnce } from "./paper.js";
 import { startRTDS } from "./rtds.js";
 
 const LOOP_MS = Number(process.env.PAPER_LOOP_MS ?? 10000);
+const DASHBOARD_PORT = Number(process.env.DASHBOARD_PORT ?? 10000);
 
 async function ingestOnce() {
   const insertTrade = db.prepare(`

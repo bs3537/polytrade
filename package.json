@@ -12,7 +12,7 @@
     "paper:reset": "node dist/paper-reset.js",
     "paper:daemon": "node dist/paper-daemon.js",
     "dashboard": "node dist/dashboard.js",
-    "start:render": "bash -c \"npm run paper:reset && npm run paper:daemon & npm run dashboard\"",
+    "start:render": "bash -c \"npm run paper:daemon & npm run dashboard\"",
     "lint": "eslint . --ext .ts"
   },
   "dependencies": {

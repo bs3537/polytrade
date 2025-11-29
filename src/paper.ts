@@ -190,8 +190,8 @@ function snapshotPortfolio() {
 
 export async function runPaperOnce() {
   if (WALLETS.length === 0) {
-    console.error("Set WALLETS in .env");
-    process.exit(1);
+    console.warn("No WALLETS configured; skipping paper simulation loop.");
+    return;
   }
 
   initDb();

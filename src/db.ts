@@ -27,8 +27,14 @@ if (!fs.existsSync(path.dirname(resolvedPath))) {
 }
 
 export const db = new Database(resolvedPath);
-db.pragma("busy_timeout = 10000");
-db.pragma("journal_mode = WAL");
+
+// Be resilient to transient locks during zero-downtime deploys.
+try {
+  db.pragma("busy_timeout = 10000");
+  db.pragma("journal_mode = WAL");
+} catch (err: any) {
+  console.warn("SQLite pragma setup skipped (continuing without WAL):", err?.message ?? err);
+}
 
 export function initDb() {
   db.exec(`

@@ -64,12 +64,21 @@ export async function fetchMarketByConditionId(conditionId: string) {
 export async function fetchPortfolioValue(userWallet: string): Promise<number> {
   if (!userWallet) throw new Error("userWallet is required for fetchPortfolioValue");
   const url = `${DATA_API_BASE}/value`;
-  const resp = await axios.get(url, {
-    params: { user: userWallet },
-    timeout: 8000,
-  });
-  const value = resp.data?.value ?? resp.data?.data?.value;
-  return Number(value ?? 0);
+  let lastErr: any;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const resp = await axios.get(url, {
+        params: { user: userWallet },
+        timeout: 8000,
+      });
+      const value = resp.data?.value ?? resp.data?.data?.value;
+      return Number(value ?? 0);
+    } catch (err) {
+      lastErr = err;
+      if (i < 2) await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+    }
+  }
+  throw lastErr ?? new Error("fetchPortfolioValue failed");
 }
 
 export async function fetchLeaderValue(userWallet: string): Promise<number> {

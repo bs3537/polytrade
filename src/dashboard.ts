@@ -42,13 +42,24 @@ async function build() {
       .prepare(
         `SELECT p.condition_id, p.leader_wallet, p.size, p.avg_price,
                 (p.size * p.avg_price) as notional,
-                m.title
+                p.updated_at,
+                m.title,
+                (
+                  SELECT price FROM leader_trades lt
+                  WHERE lt.condition_id = p.condition_id
+                  ORDER BY lt.timestamp DESC
+                  LIMIT 1
+                ) AS mark_price
          FROM paper_positions p
          LEFT JOIN markets m ON m.condition_id = p.condition_id
          ORDER BY notional DESC`
       )
       .all();
-    return rows;
+    return rows.map((r: any) => {
+      const mark = Number(r.mark_price ?? r.avg_price);
+      const unreal = Number(r.size) * (mark - Number(r.avg_price));
+      return { ...r, mark_price: mark, unrealized: unreal };
+    });
   });
 
   fastify.get("/api/fills", async (req) => {

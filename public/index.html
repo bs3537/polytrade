@@ -163,6 +163,24 @@
     </header>
     <main>
       <div class="grid" id="metrics"></div>
+
+      <div class="card" style="margin-top: 14px">
+        <div class="row" style="justify-content: space-between; align-items: center">
+          <div>
+            <div class="muted">Equity Curve</div>
+            <div class="metric" style="font-size: 18px">Paper account</div>
+          </div>
+          <div class="tabs" id="eq-tabs">
+            <button class="tab-btn active" data-ival="300">5m</button>
+            <button class="tab-btn" data-ival="1800">30m</button>
+            <button class="tab-btn" data-ival="3600">1h</button>
+            <button class="tab-btn" data-ival="86400">1d</button>
+            <button class="tab-btn" data-ival="604800">1w</button>
+          </div>
+        </div>
+        <canvas id="eq-chart" height="120"></canvas>
+      </div>
+
       <div class="card" style="margin-top: 14px">
         <div class="row" style="justify-content: space-between; align-items: center">
           <div>
@@ -178,6 +196,8 @@
               <th>Condition</th>
               <th>Size</th>
               <th>Avg Price</th>
+              <th>Unrealized</th>
+              <th>Opened</th>
               <th>Notional</th>
             </tr>
           </thead>
@@ -208,22 +228,6 @@
         </table>
       </div>
 
-      <div class="card" style="margin-top: 14px">
-        <div class="row" style="justify-content: space-between; align-items: center">
-          <div>
-            <div class="muted">Equity Curve</div>
-            <div class="metric" style="font-size: 18px">Paper account</div>
-          </div>
-          <div class="tabs" id="eq-tabs">
-            <button class="tab-btn active" data-ival="300">5m</button>
-            <button class="tab-btn" data-ival="1800">30m</button>
-            <button class="tab-btn" data-ival="3600">1h</button>
-            <button class="tab-btn" data-ival="86400">1d</button>
-            <button class="tab-btn" data-ival="604800">1w</button>
-          </div>
-        </div>
-        <canvas id="eq-chart" height="120"></canvas>
-      </div>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -263,11 +267,14 @@
         body.innerHTML = "";
         rows.forEach((r) => {
           const tr = document.createElement("tr");
+          const opened = r.updated_at ? new Date(Number(r.updated_at)).toLocaleTimeString() : "-";
           tr.innerHTML = `
             <td>${r.leader_wallet.slice(0, 6)}…${r.leader_wallet.slice(-4)}</td>
             <td>${r.title || r.condition_id.slice(0, 8) + "…"}</td>
             <td>${fmtNum(r.size)}</td>
             <td>${fmtNum(r.avg_price)}</td>
+            <td>${fmtUSD(r.unrealized ?? 0)}</td>
+            <td>${opened}</td>
             <td>${fmtUSD(r.notional)}</td>
           `;
           body.appendChild(tr);

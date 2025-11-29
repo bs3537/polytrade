@@ -13,6 +13,10 @@ const fastify = Fastify({ logger: false });
 
 async function build() {
   initDb();
+  fastify.addHook("onRequest", (req, _reply, done) => {
+    console.log(`[req] ${req.method} ${req.url}`);
+    done();
+  });
   await fastify.register(fastifyCors, { origin: "*" });
   await fastify.register(fastifyStatic, {
     root: publicDir,
@@ -21,15 +25,26 @@ async function build() {
   });
 
   fastify.get("/api/portfolio", async () => {
+    console.log("portfolio: start");
     // Recompute live to avoid stale snapshots
     const positions = db
       .prepare("SELECT size, avg_price, condition_id FROM paper_positions")
       .all() as any[];
+    console.log("portfolio: positions", positions.length);
     const latestMap = db
       .prepare(
-        "SELECT condition_id, price FROM leader_trades lt WHERE timestamp = (SELECT MAX(timestamp) FROM leader_trades lt2 WHERE lt2.condition_id = lt.condition_id)"
+        `
+        SELECT lt.condition_id, lt.price
+        FROM leader_trades lt
+        JOIN (
+          SELECT condition_id, MAX(id) AS max_id
+          FROM leader_trades
+          GROUP BY condition_id
+        ) last ON last.max_id = lt.id
+      `
       )
       .all() as any[];
+    console.log("portfolio: latest", latestMap.length);
     const latest = latestMap.reduce((m: Record<string, number>, r: any) => {
       m[r.condition_id] = Number(r.price);
       return m;

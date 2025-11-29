@@ -52,6 +52,8 @@ export function initDb() {
       market_title TEXT,
       UNIQUE(proxy_wallet, transaction_hash, asset_id, side, size, price, timestamp)
     );
+    CREATE INDEX IF NOT EXISTS idx_leader_trades_condition_ts ON leader_trades(condition_id, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_leader_trades_condition_id ON leader_trades(condition_id, id);
   `);
 
   db.exec(`

@@ -21,44 +21,67 @@ async function build() {
   });
 
   fastify.get("/api/portfolio", async () => {
-    const row = db
+    // Recompute live to avoid stale snapshots
+    const positions = db
+      .prepare("SELECT size, avg_price, condition_id FROM paper_positions")
+      .all() as any[];
+    const latestMap = db
       .prepare(
-        "SELECT equity, cash, unrealized, realized, timestamp FROM paper_portfolio ORDER BY id DESC LIMIT 1"
+        "SELECT condition_id, price FROM leader_trades lt WHERE timestamp = (SELECT MAX(timestamp) FROM leader_trades lt2 WHERE lt2.condition_id = lt.condition_id)"
       )
-      .get();
-    return (
-      row ?? {
-        equity: 0,
-        cash: 0,
-        unrealized: 0,
-        realized: 0,
-        timestamp: Date.now(),
-      }
-    );
+      .all() as any[];
+    const latest = latestMap.reduce((m: Record<string, number>, r: any) => {
+      m[r.condition_id] = Number(r.price);
+      return m;
+    }, {});
+    const unreal = positions.reduce((acc, r) => {
+      const mark = latest[r.condition_id] ?? Number(r.avg_price);
+      return acc + Number(r.size) * (mark - Number(r.avg_price));
+    }, 0);
+    const posValue = positions.reduce((acc, r) => {
+      const mark = latest[r.condition_id] ?? Number(r.avg_price);
+      return acc + Number(r.size) * mark;
+    }, 0);
+    const cashRow = db.prepare("SELECT value FROM paper_state WHERE key='paper_cash'").get() as any;
+    const cash = cashRow ? Number(cashRow.value) : 0;
+    const realizedRow = db.prepare("SELECT value FROM paper_state WHERE key='paper_realized'").get() as any;
+    const realized = realizedRow ? Number(realizedRow.value) : 0;
+    const equity = cash + posValue;
+    return {
+      equity,
+      cash,
+      unrealized: unreal,
+      realized,
+      timestamp: Date.now(),
+    };
   });
 
   fastify.get("/api/positions", async () => {
     const rows = db
       .prepare(
-        `SELECT p.condition_id, p.leader_wallet, p.size, p.avg_price,
-                (p.size * p.avg_price) as notional,
-                p.updated_at,
-                m.title,
-                (
-                  SELECT price FROM leader_trades lt
-                  WHERE lt.condition_id = p.condition_id
-                  ORDER BY lt.timestamp DESC
-                  LIMIT 1
-                ) AS mark_price
+        `SELECT
+            p.leader_wallet,
+            p.condition_id,
+            SUM(p.size) AS size,
+            SUM(p.size * p.avg_price) / NULLIF(SUM(p.size),0) AS avg_price,
+            MAX(p.updated_at) AS updated_at,
+            m.title,
+            (
+              SELECT price FROM leader_trades lt
+              WHERE lt.condition_id = p.condition_id
+              ORDER BY lt.timestamp DESC
+              LIMIT 1
+            ) AS mark_price
          FROM paper_positions p
          LEFT JOIN markets m ON m.condition_id = p.condition_id
-         ORDER BY notional DESC`
+         GROUP BY p.leader_wallet, p.condition_id, m.title`
       )
       .all();
     return rows.map((r: any) => {
       const mark = Number(r.mark_price ?? r.avg_price);
       const unreal = Number(r.size) * (mark - Number(r.avg_price));
-      return { ...r, mark_price: mark, unrealized: unreal };
+      const notional = Number(r.size) * Number(r.avg_price);
+      return { ...r, mark_price: mark, unrealized: unreal, notional };
     });
   });
 

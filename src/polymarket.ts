@@ -16,28 +16,42 @@ export type Trade = {
 
 export async function fetchTradesForWallet(wallet: string, limit = 100): Promise<Trade[]> {
   const url = `${DATA_API_BASE}/trades`;
-  const resp = await axios.get(url, {
-    params: {
-      user: wallet,
-      limit,
-      takerOnly: true,
-    },
-    timeout: 10000,
-  });
-
-  const trades = resp.data?.data ?? resp.data ?? [];
-  return trades.map((t: any) => ({
-    transactionHash: t.transactionHash,
-    conditionId: t.conditionId ?? t.conditionIdV2 ?? "",
-    assetId: t.assetId,
-    proxyWallet: t.proxyWallet,
-    price: Number(t.price),
-    size: Number(t.size),
-    side: t.side?.toUpperCase() === "SELL" ? "SELL" : "BUY",
-    timestamp: Number(t.timestamp) * 1000, // API returns seconds
-    marketSlug: t.market?.slug ?? t.slug ?? undefined,
-    marketQuestion: t.market?.question ?? t.question ?? undefined,
-  }));
+  let lastErr: any;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const resp = await axios.get(url, {
+        params: {
+          user: wallet,
+          limit,
+          takerOnly: true,
+        },
+        timeout: 10000,
+      });
+      const trades = resp.data?.data ?? resp.data ?? [];
+      return trades.map((t: any) => ({
+        transactionHash: t.transactionHash,
+        conditionId: t.conditionId ?? t.conditionIdV2 ?? "",
+        assetId: t.assetId,
+        proxyWallet: t.proxyWallet,
+        price: Number(t.price),
+        size: Number(t.size),
+        side: t.side?.toUpperCase() === "SELL" ? "SELL" : "BUY",
+        timestamp: Number(t.timestamp) * 1000, // API returns seconds
+        marketSlug: t.market?.slug ?? t.slug ?? undefined,
+        marketQuestion: t.market?.question ?? t.question ?? undefined,
+      }));
+    } catch (err: any) {
+      lastErr = err;
+      // Retry on 429/5xx, else break
+      const status = err?.response?.status;
+      if (status && status < 500 && status !== 429) break;
+      if (i < 2) {
+        const backoff = 300 * (i + 1) + Math.random() * 100;
+        await new Promise((r) => setTimeout(r, backoff));
+      }
+    }
+  }
+  throw lastErr ?? new Error("fetchTradesForWallet failed");
 }
 
 export async function fetchMarketByConditionId(conditionId: string) {

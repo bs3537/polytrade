@@ -1,6 +1,6 @@
 import { WALLETS, PAPER_SLIPPAGE_BPS, HISTORICAL_INGEST_ENABLED } from "./config.js";
 import { db, initDb } from "./db.js";
-import { fetchTradesForWallet, fetchMarketByConditionId } from "./polymarket.js";
+import { fetchTradesForWalletPaged, fetchMarketByConditionId } from "./polymarket.js";
 import { setTimeout as sleep } from "timers/promises";
 import { runPaperOnce } from "./paper.js";
 import { startRTDS } from "./rtds.js";
@@ -16,7 +16,16 @@ async function ingestOnce() {
       (@proxyWallet, @transactionHash, @conditionId, @assetId, @side, @size, @price, @timestamp, @marketSlug, @marketTitle);
   `);
   for (const w of WALLETS) {
-    const trades = await fetchTradesForWallet(w, 500);
+    const tsRow = db.prepare("SELECT MAX(timestamp) as ts FROM leader_trades WHERE proxy_wallet = ?").get(w) as
+      | { ts?: number }
+      | undefined;
+    const latest = tsRow?.ts ?? 0;
+
+    const trades = await fetchTradesForWalletPaged(w, {
+      sinceTimestamp: latest || undefined,
+      limit: 500,
+      maxPages: 40,
+    });
     for (const t of trades) {
       insertTrade.run({
         proxyWallet: t.proxyWallet,

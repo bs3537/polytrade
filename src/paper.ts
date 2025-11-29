@@ -6,7 +6,11 @@ import {
   PAPER_SIZE_MODE,
   HISTORICAL_INGEST_ENABLED,
 } from "./config.js";
-import { fetchMarketByConditionId, fetchTradesForWallet, fetchLeaderValue } from "./polymarket.js";
+import {
+  fetchMarketByConditionId,
+  fetchTradesForWalletPaged,
+  fetchLeaderValue,
+} from "./polymarket.js";
 
 type LeaderTradeRow = {
   id: number;
@@ -227,7 +231,16 @@ export async function runPaperOnce(opts: RunOpts = {}) {
     `);
 
     for (const w of WALLETS) {
-      const trades = await fetchTradesForWallet(w, 500);
+      const tsRow = db.prepare("SELECT MAX(timestamp) as ts FROM leader_trades WHERE proxy_wallet = ?").get(w) as
+        | { ts?: number }
+        | undefined;
+      const latest = tsRow?.ts ?? 0;
+
+      const trades = await fetchTradesForWalletPaged(w, {
+        sinceTimestamp: latest || undefined,
+        limit: 500,
+        maxPages: 40,
+      });
       for (const t of trades) {
         insertTrade.run({
           proxyWallet: t.proxyWallet,

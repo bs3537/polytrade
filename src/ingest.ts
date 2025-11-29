@@ -1,6 +1,6 @@
 import { initDb, db } from "./db.js";
 import { WALLETS, POLL_INTERVAL_MS } from "./config.js";
-import { fetchTradesForWallet, fetchMarketByConditionId } from "./polymarket.js";
+import { fetchTradesForWalletPaged, fetchMarketByConditionId } from "./polymarket.js";
 
 initDb();
 
@@ -42,7 +42,16 @@ async function ingestOnce() {
 
   for (const wallet of WALLETS) {
     try {
-      const trades = await fetchTradesForWallet(wallet, 500);
+      const tsRow = db.prepare("SELECT MAX(timestamp) as ts FROM leader_trades WHERE proxy_wallet = ?").get(wallet) as
+        | { ts?: number }
+        | undefined;
+      const latest = tsRow?.ts ?? 0;
+
+      const trades = await fetchTradesForWalletPaged(wallet, {
+        sinceTimestamp: latest || undefined,
+        limit: 500,
+        maxPages: 40,
+      });
       for (const t of trades) {
         insertTrade.run({
           proxyWallet: t.proxyWallet,
@@ -58,7 +67,9 @@ async function ingestOnce() {
         });
         await handleMarket(t.conditionId);
       }
-      console.log(`Synced ${trades.length} trades for ${wallet}`);
+      console.log(
+        `Synced ${trades.length} trades for ${wallet} (since ${latest ? new Date(latest).toISOString() : "beginning"})`
+      );
     } catch (err) {
       console.error(`Error ingesting ${wallet}`, err);
     }

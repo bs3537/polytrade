@@ -6,11 +6,7 @@ import {
   PAPER_SIZE_MODE,
   HISTORICAL_INGEST_ENABLED,
 } from "./config.js";
-import {
-  fetchMarketByConditionId,
-  fetchTradesForWalletPaged,
-  fetchLeaderValue,
-} from "./polymarket.js";
+import { fetchMarketByConditionId, fetchTradesForWalletPaged } from "./polymarket.js";
 
 type LeaderTradeRow = {
   id: number;
@@ -271,7 +267,7 @@ export async function runPaperOnce(opts: RunOpts = {}) {
   }
 
   const equityNow = currentCash() + getPositionValue();
-  const perLeaderAllocation = equityNow / WALLETS.length;
+  const maxNotionalPerTrade = equityNow * 0.0001; // 0.01% of current equity per trade
 
   for (const t of pending) {
     const leaderWallet = t.proxy_wallet.toLowerCase();
@@ -282,40 +278,20 @@ export async function runPaperOnce(opts: RunOpts = {}) {
     const price =
       t.side === "BUY" ? t.price * (1 + slip) : t.price * (1 - slip);
 
-    // Compute existing position notional for this leader
-  const posRow = db
-    .prepare(
-      "SELECT size, avg_price FROM paper_positions WHERE condition_id=? AND outcome='' AND leader_wallet=?"
-    )
-    .get(t.condition_id, leaderWallet) as any;
-    const currentExposure = posRow ? Number(posRow.size) * Number(posRow.avg_price) : 0;
-    const leaderNotional = t.size * t.price;
-    const leaderValue = PAPER_SIZE_MODE === "LEADER_PCT" ? await fetchLeaderValue(t.proxy_wallet) : 0;
+    // Current exposure to avoid shorting on SELL
+    const posRow = db
+      .prepare(
+        "SELECT size, avg_price FROM paper_positions WHERE condition_id=? AND outcome='' AND leader_wallet=?"
+      )
+      .get(t.condition_id, leaderWallet) as any;
+    const currentExposureNotional = posRow ? Number(posRow.size) * Number(posRow.avg_price) : 0;
 
-    let desiredNotional = 0;
-    if (PAPER_SIZE_MODE === "LEADER_PCT") {
-      const leaderPct = leaderValue > 0 ? leaderNotional / leaderValue : 0.10; // fallback 10%
-      const target = leaderPct * perLeaderAllocation;
-      if (t.side === "BUY") {
-        const available = perLeaderAllocation - currentExposure;
-        desiredNotional = Math.max(0, Math.min(available, target));
-      } else {
-        // SELL: close proportionally but not beyond position
-        const maxSell = Math.abs(currentExposure);
-        desiredNotional = Math.max(0, Math.min(maxSell, target));
-      }
-    } else {
-      if (t.side === "BUY") {
-        const available = perLeaderAllocation - currentExposure;
-        desiredNotional = Math.max(0, Math.min(available, leaderNotional));
-      } else {
-        // SELL: allow closing up to current exposure, but not shorting
-        desiredNotional = Math.max(0, Math.min(Math.abs(currentExposure), leaderNotional));
-      }
+    let desiredNotional = maxNotionalPerTrade;
+    if (t.side === "SELL") {
+      desiredNotional = Math.min(desiredNotional, Math.abs(currentExposureNotional));
+      if (desiredNotional <= 0) continue; // no position to sell
     }
-    if (desiredNotional <= 0) continue;
 
-    // Do not exceed available cash on BUY
     if (t.side === "BUY") {
       const cashAvail = currentCash();
       if (cashAvail <= 0) continue;

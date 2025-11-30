@@ -25,6 +25,23 @@ type LeaderTradeRow = {
 // Ensure tables exist before preparing statements
 initDb();
 
+async function fetchLeaderValueWithRetry(wallet: string): Promise<number | null> {
+  let lastErr: any;
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fetchLeaderValue(wallet);
+    } catch (err) {
+      lastErr = err;
+      if (i < 2) {
+        const backoff = 150 * (i + 1);
+        await new Promise((r) => setTimeout(r, backoff));
+      }
+    }
+  }
+  console.warn(`fetchLeaderValue failed for ${wallet}:`, lastErr?.message ?? lastErr);
+  return null;
+}
+
 const getState = db.prepare("SELECT value FROM paper_state WHERE key = ?");
 const setState = db.prepare(
   "INSERT INTO paper_state(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
@@ -291,8 +308,8 @@ export async function runPaperOnce(opts: RunOpts = {}) {
 
     // Leader allocation percentage for this trade
     const leaderNotional = t.size * t.price;
-    const leaderValue = await fetchLeaderValue(t.proxy_wallet);
-    const leaderPct = leaderValue > 0 ? leaderNotional / leaderValue : 0.05; // fallback 5%
+    const leaderValue = await fetchLeaderValueWithRetry(t.proxy_wallet);
+    const leaderPct = leaderValue && leaderValue > 0 ? leaderNotional / leaderValue : 0.05; // fallback 5%
 
     let desiredNotional = leaderPct * equityNow;
 

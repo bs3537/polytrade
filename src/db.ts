@@ -32,6 +32,8 @@ export const db = new Database(resolvedPath);
 try {
   db.pragma("busy_timeout = 10000");
   db.pragma("journal_mode = WAL");
+  db.pragma("wal_autocheckpoint = 1000"); // checkpoint roughly every 1000 pages (~1MB default page size)
+  db.pragma("journal_size_limit = 134217728"); // cap WAL to ~128MB to avoid disk bloat
 } catch (err: any) {
   console.warn("SQLite pragma setup skipped (continuing without WAL):", err?.message ?? err);
 }

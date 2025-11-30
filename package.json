@@ -10,6 +10,7 @@
     "equity": "node dist/equity.js",
     "paper": "node dist/paper.js",
     "paper:reset": "node dist/paper-reset.js",
+    "db:maint": "bash scripts/db-maint.sh",
     "paper:migrate": "node scripts/paper-migrate-null-outcome.mjs",
     "paper:daemon": "node dist/paper-daemon.js",
     "dashboard": "node dist/dashboard.js",

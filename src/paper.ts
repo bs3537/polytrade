@@ -6,7 +6,11 @@ import {
   PAPER_SIZE_MODE,
   HISTORICAL_INGEST_ENABLED,
 } from "./config.js";
-import { fetchMarketByConditionId, fetchTradesForWalletPaged } from "./polymarket.js";
+import {
+  fetchMarketByConditionId,
+  fetchTradesForWalletPaged,
+  fetchLeaderValue,
+} from "./polymarket.js";
 
 type LeaderTradeRow = {
   id: number;
@@ -267,7 +271,6 @@ export async function runPaperOnce(opts: RunOpts = {}) {
   }
 
   const equityNow = currentCash() + getPositionValue();
-  const maxNotionalPerTrade = equityNow * 0.0001; // 0.01% of current equity per trade
 
   for (const t of pending) {
     const leaderWallet = t.proxy_wallet.toLowerCase();
@@ -286,7 +289,13 @@ export async function runPaperOnce(opts: RunOpts = {}) {
       .get(t.condition_id, leaderWallet) as any;
     const currentExposureNotional = posRow ? Number(posRow.size) * Number(posRow.avg_price) : 0;
 
-    let desiredNotional = maxNotionalPerTrade;
+    // Leader allocation percentage for this trade
+    const leaderNotional = t.size * t.price;
+    const leaderValue = await fetchLeaderValue(t.proxy_wallet);
+    const leaderPct = leaderValue > 0 ? leaderNotional / leaderValue : 0.05; // fallback 5%
+
+    let desiredNotional = leaderPct * equityNow;
+
     if (t.side === "SELL") {
       desiredNotional = Math.min(desiredNotional, Math.abs(currentExposureNotional));
       if (desiredNotional <= 0) continue; // no position to sell

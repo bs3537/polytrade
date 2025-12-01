@@ -18,6 +18,7 @@ type LeaderTradeRow = {
   id: number;
   proxy_wallet: string;
   condition_id: string;
+  asset_id?: string;
   side: "BUY" | "SELL";
   size: number;
   price: number;
@@ -280,7 +281,7 @@ export async function runPaperOnce(opts: RunOpts = {}) {
   const lastId = getLastProcessedId();
   const pending = db
     .prepare(
-      "SELECT id, proxy_wallet, condition_id, side, size, price, timestamp FROM leader_trades WHERE id > ? AND timestamp >= ? ORDER BY id ASC"
+      "SELECT id, proxy_wallet, condition_id, asset_id, side, size, price, timestamp FROM leader_trades WHERE id > ? AND timestamp >= ? ORDER BY id ASC"
     )
     .all(lastId, startTs) as any as LeaderTradeRow[];
 
@@ -336,6 +337,7 @@ export async function runPaperOnce(opts: RunOpts = {}) {
           leaderTradeId: t.id,
           leaderWallet,
           conditionId: t.condition_id,
+          assetId: t.asset_id ?? undefined,
           side: t.side,
           size: copySize,
           price,

@@ -23,12 +23,13 @@
     "axios": "^1.7.7",
     "better-sqlite3": "^9.4.3",
     "dotenv": "^16.4.5",
+    "ethers": "^6.15.0",
     "fastify": "^4.27.2",
     "ws": "^8.17.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.9.0",
+    "@types/node": "^22.19.1",
     "@types/ws": "^8.18.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3"

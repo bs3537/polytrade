@@ -130,4 +130,25 @@ export function initDb() {
       value TEXT
     );
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS live_fills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      leader_trade_id INTEGER,
+      leader_wallet TEXT NOT NULL,
+      condition_id TEXT NOT NULL,
+      side TEXT NOT NULL,
+      price REAL NOT NULL,
+      size REAL NOT NULL,
+      notional REAL NOT NULL,
+      status TEXT NOT NULL,
+      tx_hash TEXT,
+      fee REAL,
+      submitted_at INTEGER NOT NULL,
+      confirmed_at INTEGER,
+      created_at INTEGER NOT NULL,
+      error TEXT,
+      FOREIGN KEY(leader_trade_id) REFERENCES leader_trades(id)
+    );
+  `);
 }

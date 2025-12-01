@@ -5,12 +5,14 @@ import {
   PAPER_SLIPPAGE_BPS,
   PAPER_SIZE_MODE,
   HISTORICAL_INGEST_ENABLED,
+  PAPER_MODE,
 } from "./config.js";
 import {
   fetchMarketByConditionId,
   fetchTradesForWalletPaged,
   fetchLeaderValue,
 } from "./polymarket.js";
+import { executeLiveTrade } from "./trader.js";
 
 type LeaderTradeRow = {
   id: number;
@@ -326,6 +328,23 @@ export async function runPaperOnce(opts: RunOpts = {}) {
     }
 
     const copySize = desiredNotional / price;
+
+    // Live trading path: mirror allocation on-chain/off-chain.
+    if (!PAPER_MODE) {
+      try {
+        await executeLiveTrade({
+          leaderTradeId: t.id,
+          leaderWallet,
+          conditionId: t.condition_id,
+          side: t.side,
+          size: copySize,
+          price,
+          notional: desiredNotional,
+        });
+      } catch (err) {
+        console.error("live trade error", err);
+      }
+    }
 
     // cash impact
     const cashDelta = t.side === "BUY" ? -copySize * price : copySize * price;

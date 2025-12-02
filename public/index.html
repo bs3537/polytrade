@@ -118,6 +118,36 @@
         border: 1px solid rgba(255, 255, 255, 0.08);
         font-size: 12px;
       }
+      .new-pill {
+        margin-left: 8px;
+        padding: 2px 7px;
+        border-radius: 8px;
+        color: #f87171;
+        border: 1px solid rgba(248, 113, 113, 0.6);
+        background: rgba(248, 113, 113, 0.08);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+      }
+      .new-row td:first-child,
+      .new-row td:nth-child(2) {
+        color: #fca5a5;
+        font-weight: 700;
+      }
+      .new-row {
+        position: relative;
+      }
+      .new-row::before {
+        content: "";
+        position: absolute;
+        left: -6px;
+        top: 6px;
+        bottom: 6px;
+        width: 3px;
+        background: linear-gradient(180deg, rgba(248, 113, 113, 0.8), rgba(248, 113, 113, 0.25));
+        border-radius: 6px;
+      }
       .pnlu {
         color: var(--success);
       }
@@ -339,11 +369,14 @@
       function renderSportsPositions(rows, lastUpdated) {
         const body = document.querySelector("#sports-table tbody");
         body.innerHTML = "";
+        const now = Date.now();
         rows.forEach((r) => {
           const tr = document.createElement("tr");
           const updated = r.lastUpdated ? new Date(Number(r.lastUpdated)).toLocaleTimeString() : "-";
+          const isNew = r.lastUpdated && now - Number(r.lastUpdated) <= 60 * 60 * 1000;
+          if (isNew) tr.classList.add("new-row");
           tr.innerHTML = `
-            <td>${r.title || r.conditionId.slice(0, 8) + "…"}</td>
+            <td>${r.title || r.conditionId.slice(0, 8) + "…"}${isNew ? '<span class="new-pill">NEW</span>' : ""}</td>
             <td>${r.outcome || ""}</td>
             <td>${fmtNum(r.totalSize)}</td>
             <td>${fmtNum(r.markPrice)}</td>

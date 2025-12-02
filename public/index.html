@@ -366,7 +366,7 @@
         });
       }
 
-      function renderSportsPositions(rows, lastUpdated) {
+      function renderSportsPositions(rows, lastUpdated, cutoff) {
         const body = document.querySelector("#sports-table tbody");
         body.innerHTML = "";
         const now = Date.now();
@@ -374,7 +374,7 @@
           const tr = document.createElement("tr");
           const updated = r.lastUpdated ? new Date(Number(r.lastUpdated)).toLocaleTimeString() : "-";
           const firstSeen = r.firstSeen ? Number(r.firstSeen) : null;
-          const isNew = firstSeen ? now - firstSeen <= 60 * 60 * 1000 : false;
+          const isNew = firstSeen && cutoff ? firstSeen > cutoff && now - firstSeen <= 60 * 60 * 1000 : false;
           if (isNew) tr.classList.add("new-row");
           tr.innerHTML = `
             <td>${r.title || r.conditionId.slice(0, 8) + "…"}${isNew ? '<span class="new-pill">NEW</span>' : ""}</td>
@@ -385,11 +385,11 @@
             <td>${(r.holders || []).map((h) => h.slice(0, 6) + "…" + h.slice(-4)).join(", ")}</td>
             <td>${updated}</td>
           `;
-          body.appendChild(tr);
-        });
-        const badge = document.getElementById("sports-refresh");
-        const tsLabel = lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "-";
-        badge.textContent = `Sports • Updated ${tsLabel}`;
+        body.appendChild(tr);
+      });
+      const badge = document.getElementById("sports-refresh");
+      const tsLabel = lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "-";
+      badge.textContent = `Sports • Updated ${tsLabel}`;
       }
 
       function renderFills(rows) {
@@ -484,7 +484,7 @@
         try {
           const data = await fetchJSON("/api/sports/positions");
           sportsCache = data;
-          if (positionsTab === "sports") renderSportsPositions(data.rows || [], data.lastUpdated);
+          if (positionsTab === "sports") renderSportsPositions(data.rows || [], data.lastUpdated, data.firstSeenCutoff);
         } catch (e) {
           const badge = document.getElementById("pos-refresh");
           badge.textContent = "Sports • Error";
@@ -511,7 +511,7 @@
             document.getElementById("overview-section").style.display = activeMainTab === "overview" ? "block" : "none";
             document.getElementById("sports-section").style.display = activeMainTab === "sports" ? "block" : "none";
             if (activeMainTab === "sports") {
-              renderSportsPositions(sportsCache.rows || [], sportsCache.lastUpdated);
+              renderSportsPositions(sportsCache.rows || [], sportsCache.lastUpdated, sportsCache.firstSeenCutoff);
             }
           });
         });

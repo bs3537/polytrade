@@ -152,6 +152,15 @@ async function runOnce() {
       })
     );
   }
+
+  // Seed the cutoff after the first successful pass so initial load doesn't mark everything NEW
+  const cutoffRow = db.prepare("SELECT value FROM sports_poll_state WHERE key='first_seen_cutoff'").get() as any;
+  if (!cutoffRow) {
+    const now = Date.now();
+    db.prepare(
+      "INSERT INTO sports_poll_state(key, value) VALUES('first_seen_cutoff', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+    ).run(String(now));
+  }
 }
 
 let timer: NodeJS.Timeout | null = null;
@@ -193,8 +202,11 @@ export function getAggregatedSportsPositions() {
     .all();
 
   const last = db.prepare("SELECT value FROM sports_poll_state WHERE key='last_success'").get() as any;
+  const cutoffRow = db.prepare("SELECT value FROM sports_poll_state WHERE key='first_seen_cutoff'").get() as any;
+  const firstSeenCutoff = cutoffRow ? Number(cutoffRow.value) : null;
   return {
     lastUpdated: last ? Number(last.value) : null,
+    firstSeenCutoff,
     rows: rows.map((r: any) => ({
       conditionId: r.condition_id,
       outcome: r.outcome,

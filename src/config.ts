@@ -19,6 +19,16 @@ export const RPC_URL = process.env.RPC_URL ?? "";
 export const PRIVATE_KEY = process.env.PRIVATE_KEY ?? "";
 export const MAX_GAS_GWEI = Number(process.env.MAX_GAS_GWEI ?? 150);
 export const MIN_BALANCE_MATIC = Number(process.env.MIN_BALANCE_MATIC ?? 0.2);
+export const USE_MY_WALLET_DIRECT = (process.env.USE_MY_WALLET_DIRECT ?? "true").toLowerCase() === "true";
+
+// Sports leaders feature
+export const SPORTS_LEADERS = (process.env.SPORTS_LEADERS ?? "")
+  .split(",")
+  .map((w) => w.trim().toLowerCase())
+  .filter((w) => w.length > 0);
+export const SPORTS_POLL_INTERVAL_MS = Number(process.env.SPORTS_POLL_INTERVAL_MS ?? 60000);
+export const SPORTS_SIZE_THRESHOLD = Number(process.env.SPORTS_SIZE_THRESHOLD ?? 0);
+export const SPORTS_CATEGORY = (process.env.SPORTS_CATEGORY ?? "sports").toLowerCase();
 
 export const WALLETS = (process.env.WALLETS ?? "")
   .split(",")
@@ -31,4 +41,8 @@ if (WALLETS.length === 0) {
 
 if (!MY_WALLET) {
   console.warn("MY_WALLET not set in .env (needed for equity sizing).");
+}
+
+if (SPORTS_LEADERS.length === 0) {
+  console.warn("No sports leaders configured. Set SPORTS_LEADERS in .env to enable sports tab.");
 }

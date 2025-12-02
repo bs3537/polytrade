@@ -4,7 +4,9 @@ import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyCors from "@fastify/cors";
 import { db, initDb } from "./db.js";
-import { PAPER_MODE, LIVE_TRADING_ENABLED } from "./config.js";
+import { PAPER_MODE, LIVE_TRADING_ENABLED, MY_WALLET, USE_MY_WALLET_DIRECT } from "./config.js";
+import { fetchTradesForWalletPaged, fetchPortfolioValue } from "./polymarket.js";
+import { startSportsPoller, getAggregatedSportsPositions, getRawSportsPositions } from "./sports-leaders.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -110,6 +112,81 @@ function computeLivePortfolio() {
   return { equity, cash, unrealized: unreal, realized };
 }
 
+async function computeWalletPortfolio() {
+  if (!MY_WALLET) {
+    throw new Error("MY_WALLET must be set for live wallet view");
+  }
+
+  // Pull recent trades and rebuild positions/PnL locally
+  const trades = await fetchTradesForWalletPaged(MY_WALLET, { limit: 500, maxPages: 20 });
+  trades.sort((a, b) => a.timestamp - b.timestamp);
+
+  const pos = new Map<string, { size: number; avg: number; title?: string; last: number }>();
+  let realized = 0;
+
+  for (const t of trades) {
+    const key = t.conditionId;
+    const signedSize = Number(t.size) * (t.side === "BUY" ? 1 : -1);
+    const entry = pos.get(key) ?? { size: 0, avg: 0, title: t.marketQuestion, last: t.price };
+    const prevSize = entry.size;
+    const prevAvg = entry.avg;
+    const combined = prevSize + signedSize;
+    let newAvg = prevAvg;
+
+    if (combined === 0) {
+      if (Math.sign(prevSize) !== Math.sign(signedSize)) {
+        realized += (t.price - prevAvg) * Math.min(Math.abs(t.size), Math.abs(prevSize));
+      }
+      pos.delete(key);
+      continue;
+    }
+
+    if (Math.sign(prevSize) === Math.sign(combined)) {
+      const prevNotional = Math.abs(prevSize) * prevAvg;
+      const addNotional = Math.abs(signedSize) * Number(t.price);
+      newAvg = (prevNotional + addNotional) / Math.abs(combined);
+    } else {
+      const reduceQty = Math.min(Math.abs(signedSize), Math.abs(prevSize));
+      realized += (t.price - prevAvg) * reduceQty;
+      newAvg = prevAvg;
+    }
+
+    pos.set(key, {
+      size: combined,
+      avg: newAvg,
+      title: t.marketQuestion,
+      last: t.price,
+    });
+  }
+
+  // Mark positions using last trade price we saw for each condition
+  let posValue = 0;
+  let unreal = 0;
+  const positions = Array.from(pos.entries()).map(([condition_id, v]) => {
+    const mark = v.last ?? v.avg;
+    posValue += v.size * mark;
+    unreal += v.size * (mark - v.avg);
+    return {
+      leader_wallet: MY_WALLET,
+      condition_id,
+      size: v.size,
+      avg_price: v.avg,
+      updated_at: null,
+      title: v.title ?? null,
+      mark_price: mark,
+      unrealized: v.size * (mark - v.avg),
+      notional: v.size * v.avg,
+    };
+  });
+
+  // Fetch authoritative portfolio value to set cash so that equity matches Polymarket
+  const remoteValue = await fetchPortfolioValue(MY_WALLET);
+  const equity = remoteValue;
+  const cash = equity - posValue;
+
+  return { equity, cash, unrealized: unreal, realized, positions };
+}
+
 async function build() {
   initDb();
   fastify.addHook("onRequest", (req, _reply, done) => {
@@ -127,13 +204,36 @@ async function build() {
 
   fastify.get("/api/portfolio", async () => {
     console.log("portfolio: start");
-    const data =
-      !PAPER_MODE && LIVE_TRADING_ENABLED ? computeLivePortfolio() : computePaperPortfolio();
-    return { ...data, timestamp: Date.now(), mode: !PAPER_MODE && LIVE_TRADING_ENABLED ? "live" : "paper" };
+    let data;
+    let source = "paper";
+
+    if (!PAPER_MODE && LIVE_TRADING_ENABLED) {
+      if (USE_MY_WALLET_DIRECT && MY_WALLET) {
+        data = await computeWalletPortfolio();
+        source = "wallet";
+      } else {
+        data = computeLivePortfolio();
+        source = "live_fills";
+      }
+    } else {
+      data = computePaperPortfolio();
+    }
+
+    return {
+      ...data,
+      timestamp: Date.now(),
+      mode: !PAPER_MODE && LIVE_TRADING_ENABLED ? "live" : "paper",
+      source,
+    };
   });
 
   fastify.get("/api/positions", async () => {
     if (!PAPER_MODE && LIVE_TRADING_ENABLED) {
+      if (USE_MY_WALLET_DIRECT && MY_WALLET) {
+        const wallet = await computeWalletPortfolio();
+        return wallet.positions;
+      }
+
       // Aggregate from live_fills
       const fills = db
         .prepare(
@@ -215,6 +315,24 @@ async function build() {
 
   fastify.get("/api/closed", async (req) => {
     const limit = Number((req.query as any)?.limit ?? 50);
+    if (!PAPER_MODE && LIVE_TRADING_ENABLED && USE_MY_WALLET_DIRECT && MY_WALLET) {
+      const trades = await fetchTradesForWalletPaged(MY_WALLET, { limit: 500, maxPages: 4 });
+      return trades
+        .filter((t) => t.side === "SELL")
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, limit)
+        .map((t) => ({
+          leader_wallet: MY_WALLET,
+          condition_id: t.conditionId,
+          side: t.side,
+          price: t.price,
+          size: t.size,
+          notional: t.size * t.price,
+          timestamp: t.timestamp,
+          title: t.marketQuestion ?? null,
+        }));
+    }
+
     const rows = db
       .prepare(
         `SELECT f.id, f.leader_wallet, f.condition_id, f.side, f.price, f.size, f.notional,
@@ -233,6 +351,25 @@ async function build() {
   fastify.get("/api/fills", async (req) => {
     const limit = Number((req.query as any)?.limit ?? 50);
     if (!PAPER_MODE && LIVE_TRADING_ENABLED) {
+      if (USE_MY_WALLET_DIRECT && MY_WALLET) {
+        const trades = await fetchTradesForWalletPaged(MY_WALLET, { limit, maxPages: 2 });
+        return trades
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, limit)
+          .map((t) => ({
+            leader_wallet: MY_WALLET,
+            condition_id: t.conditionId,
+            side: t.side,
+            price: t.price,
+            size: t.size,
+            notional: t.size * t.price * (t.side === "BUY" ? 1 : -1),
+            submitted_at: t.timestamp,
+            timestamp: t.timestamp,
+            status: "FILLED",
+            tx_hash: t.transactionHash,
+            title: t.marketQuestion ?? null,
+          }));
+      }
       return db
         .prepare(
           `SELECT leader_wallet, condition_id, side, price, size, notional, submitted_at as timestamp,
@@ -264,8 +401,9 @@ async function build() {
     const limit = Number(q.limit ?? 288); // default ~24h at 5m
 
     if (!PAPER_MODE && LIVE_TRADING_ENABLED) {
-      // Build synthetic equity series from live_fills snapshots (simple approach: latest point only)
-      const portfolio = computeLivePortfolio();
+      const portfolio = USE_MY_WALLET_DIRECT && MY_WALLET
+        ? await computeWalletPortfolio()
+        : computeLivePortfolio();
       return [
         {
           timestamp: Date.now(),
@@ -302,6 +440,14 @@ async function build() {
     reply.redirect("/");
   });
 
+  fastify.get("/api/sports/positions", async () => {
+    return getAggregatedSportsPositions();
+  });
+
+  fastify.get("/api/sports/raw", async () => {
+    return getRawSportsPositions();
+  });
+
   fastify.setErrorHandler((error, _request, reply) => {
     console.error("dashboard error", error);
     reply.status(500).send({ error: error.message ?? "internal error" });
@@ -316,3 +462,6 @@ build().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+// Start sports poller once the module is loaded (after build call scheduled)
+startSportsPoller();

@@ -14,6 +14,20 @@ export type Trade = {
   marketQuestion?: string;
 };
 
+export type Position = {
+  conditionId: string;
+  outcome: string;
+  size: number;
+  avgPrice: number;
+  markPrice: number;
+  currentValue: number;
+  title?: string;
+  slug?: string;
+  eventSlug?: string;
+  category?: string;
+  updatedAt?: number;
+};
+
 export async function fetchTradesForWallet(wallet: string, limit = 100): Promise<Trade[]> {
   const url = `${DATA_API_BASE}/trades`;
   let lastErr: any;
@@ -126,6 +140,7 @@ export async function fetchMarketByConditionId(conditionId: string) {
     title: market.title ?? market.question,
     category: market.category,
     endDate: market.endDate,
+    eventSlug: market.eventSlug ?? market.event_slug ?? market.eventId,
   };
 }
 
@@ -155,4 +170,40 @@ export async function fetchLeaderValue(userWallet: string): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+export async function fetchPositionsForWallet(
+  wallet: string,
+  opts: { sizeThreshold?: number } = {}
+): Promise<Position[]> {
+  if (!wallet) throw new Error("wallet is required for fetchPositionsForWallet");
+  const { sizeThreshold = 0 } = opts;
+  const url = `${DATA_API_BASE}/positions`;
+  const res = await axios.get(url, {
+    params: { user: wallet, status: "open" },
+    timeout: 12000,
+  });
+
+  const rows = res.data?.data ?? res.data ?? [];
+  return rows
+    .map((p: any) => {
+      const size = Number(p.size ?? p.balance ?? 0);
+      const avgPrice = Number(p.avgPrice ?? p.averagePrice ?? p.price ?? 0);
+      const markPrice = Number(p.price ?? p.markPrice ?? p.curPrice ?? avgPrice);
+      const value = Number(p.currentValue ?? p.value ?? size * markPrice);
+      return {
+        conditionId: p.conditionId ?? p.condition_id ?? p.conditionIdV2 ?? "",
+        outcome: (p.outcome ?? p.tokenType ?? "").toString(),
+        size,
+        avgPrice,
+        markPrice,
+        currentValue: value,
+        title: p.market?.title ?? p.market?.question ?? p.title ?? p.question,
+        slug: p.market?.slug ?? p.slug,
+        eventSlug: p.market?.eventSlug ?? p.eventSlug ?? p.event_slug,
+        category: (p.market?.category ?? p.category ?? "").toString().toLowerCase(),
+        updatedAt: Number(p.updatedAt ?? p.updated_at ?? Date.now()),
+      } as Position;
+    })
+    .filter((p: Position) => p.size && Math.abs(p.size) > sizeThreshold);
 }

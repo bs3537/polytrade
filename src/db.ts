@@ -151,4 +151,33 @@ export function initDb() {
       FOREIGN KEY(leader_trade_id) REFERENCES leader_trades(id)
     );
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sports_positions_raw (
+      leader_wallet TEXT NOT NULL,
+      condition_id TEXT NOT NULL,
+      outcome TEXT NOT NULL DEFAULT '',
+      size REAL NOT NULL,
+      avg_price REAL,
+      cur_price REAL,
+      current_value REAL,
+      title TEXT,
+      slug TEXT,
+      event_slug TEXT,
+      category TEXT,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(leader_wallet, condition_id, outcome)
+    );
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_sports_positions_condition ON sports_positions_raw(condition_id);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sports_poll_state (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+  `);
 }

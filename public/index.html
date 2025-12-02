@@ -162,6 +162,12 @@
       <div class="pill" id="updated">loading…</div>
     </header>
     <main>
+      <div class="tabs" id="main-tabs" style="margin-bottom: 12px">
+        <button class="tab-btn active" data-tab="overview">Overview</button>
+        <button class="tab-btn" data-tab="sports">Sports Leaders</button>
+      </div>
+
+      <div id="overview-section">
       <div class="grid" id="metrics"></div>
 
       <div class="card" style="margin-top: 14px">
@@ -250,7 +256,33 @@
           <tbody></tbody>
         </table>
       </div>
+      </div> <!-- /overview-section -->
 
+      <div id="sports-section" style="display:none">
+        <div class="card" style="margin-top: 14px">
+          <div class="row" style="justify-content: space-between; align-items: center">
+            <div>
+              <div class="muted">Top Sports Traders</div>
+              <div class="metric" style="font-size: 18px">Aggregate open positions</div>
+            </div>
+            <div class="badge" id="sports-refresh">Sports • loading…</div>
+          </div>
+          <table id="sports-table" style="margin-top: 8px">
+            <thead>
+              <tr>
+                <th>Market</th>
+                <th>Outcome</th>
+                <th>Total Size</th>
+                <th>Mark</th>
+                <th>Total USD</th>
+                <th>Wallets</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -304,6 +336,28 @@
         });
       }
 
+      function renderSportsPositions(rows, lastUpdated) {
+        const body = document.querySelector("#sports-table tbody");
+        body.innerHTML = "";
+        rows.forEach((r) => {
+          const tr = document.createElement("tr");
+          const updated = r.lastUpdated ? new Date(Number(r.lastUpdated)).toLocaleTimeString() : "-";
+          tr.innerHTML = `
+            <td>${r.title || r.conditionId.slice(0, 8) + "…"}</td>
+            <td>${r.outcome || ""}</td>
+            <td>${fmtNum(r.totalSize)}</td>
+            <td>${fmtNum(r.markPrice)}</td>
+            <td>${fmtUSD(r.totalUsd)}</td>
+            <td>${(r.holders || []).map((h) => h.slice(0, 6) + "…" + h.slice(-4)).join(", ")}</td>
+            <td>${updated}</td>
+          `;
+          body.appendChild(tr);
+        });
+        const badge = document.getElementById("sports-refresh");
+        const tsLabel = lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "-";
+        badge.textContent = `Sports • Updated ${tsLabel}`;
+      }
+
       function renderFills(rows) {
         const body = document.querySelector("#fills-table tbody");
         body.innerHTML = "";
@@ -346,6 +400,9 @@
 
       let eqChart;
       let currentInterval = 300;
+      let sportsCache = { rows: [], lastUpdated: null };
+      let leaderPositions = [];
+      let activeMainTab = "overview";
 
       async function loadEquity(intervalSec = 300) {
         const data = await fetchJSON(`/api/equity?intervalSec=${intervalSec}&limit=400`);
@@ -389,6 +446,17 @@
         }
       }
 
+      async function loadSports() {
+        try {
+          const data = await fetchJSON("/api/sports/positions");
+          sportsCache = data;
+          if (positionsTab === "sports") renderSportsPositions(data.rows || [], data.lastUpdated);
+        } catch (e) {
+          const badge = document.getElementById("pos-refresh");
+          badge.textContent = "Sports • Error";
+        }
+      }
+
       function bindTabs() {
         const tabs = document.querySelectorAll("#eq-tabs .tab-btn");
         tabs.forEach((btn) => {
@@ -397,6 +465,20 @@
             btn.classList.add("active");
             currentInterval = Number(btn.dataset.ival);
             loadEquity(currentInterval);
+          });
+        });
+
+        const mainTabs = document.querySelectorAll("#main-tabs .tab-btn");
+        mainTabs.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            mainTabs.forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            activeMainTab = btn.dataset.tab;
+            document.getElementById("overview-section").style.display = activeMainTab === "overview" ? "block" : "none";
+            document.getElementById("sports-section").style.display = activeMainTab === "sports" ? "block" : "none";
+            if (activeMainTab === "sports") {
+              renderSportsPositions(sportsCache.rows || [], sportsCache.lastUpdated);
+            }
           });
         });
       }
@@ -409,12 +491,14 @@
             fetchJSON("/api/fills?limit=50"),
             fetchJSON("/api/closed?limit=50"),
           ]);
+          leaderPositions = positions;
           renderMetrics(portfolio);
           renderPositions(positions);
           renderFills(fills);
           renderClosed(closed);
           await loadEquity(currentInterval);
-          document.getElementById("updated").textContent = "Updated " + new Date().toLocaleTimeString();
+          const modeLabel = `${(portfolio.mode || "paper").toUpperCase()} • ${portfolio.source || "paper"}`;
+          document.getElementById("updated").textContent = `${modeLabel} • Updated ${new Date().toLocaleTimeString()}`;
         } catch (e) {
           document.getElementById("updated").textContent = "Error: " + e.message;
         }
@@ -422,7 +506,9 @@
 
       bindTabs();
       refresh();
+      loadSports();
       setInterval(refresh, 5000);
+      setInterval(loadSports, 60000);
     </script>
   </body>
 </html>

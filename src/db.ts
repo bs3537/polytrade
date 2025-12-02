@@ -166,9 +166,21 @@ export function initDb() {
       event_slug TEXT,
       category TEXT,
       updated_at INTEGER NOT NULL,
+      first_seen_at INTEGER,
       PRIMARY KEY(leader_wallet, condition_id, outcome)
     );
   `);
+
+  // Backfill first_seen_at for older deployments
+  const sportsCols = db.prepare("PRAGMA table_info(sports_positions_raw)").all() as any[];
+  const hasFirstSeen = sportsCols.some((c) => c.name === "first_seen_at");
+  if (!hasFirstSeen) {
+    try {
+      db.exec("ALTER TABLE sports_positions_raw ADD COLUMN first_seen_at INTEGER");
+    } catch (err) {
+      console.error("Failed to add first_seen_at to sports_positions_raw", err);
+    }
+  }
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_sports_positions_condition ON sports_positions_raw(condition_id);

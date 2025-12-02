@@ -49,13 +49,33 @@ async function ensureMarketMeta(conditionId: string): Promise<{ title?: string; 
 
 function upsertSportsRows(wallet: string, positions: Position[]) {
   const tx = db.transaction(() => {
-    db.prepare("DELETE FROM sports_positions_raw WHERE leader_wallet = ?").run(wallet);
+    const existing = db
+      .prepare("SELECT condition_id, outcome FROM sports_positions_raw WHERE leader_wallet = ?")
+      .all(wallet) as any[];
+    const existingKeys = new Set(existing.map((r) => `${r.condition_id}||${r.outcome}`));
+
     const stmt = db.prepare(
-      `INSERT INTO sports_positions_raw(leader_wallet, condition_id, outcome, size, avg_price, cur_price, current_value, title, slug, event_slug, category, updated_at)
-       VALUES (@leader_wallet, @condition_id, @outcome, @size, @avg_price, @cur_price, @current_value, @title, @slug, @event_slug, @category, @updated_at)`
+      `INSERT INTO sports_positions_raw(leader_wallet, condition_id, outcome, size, avg_price, cur_price, current_value, title, slug, event_slug, category, updated_at, first_seen_at)
+       VALUES (@leader_wallet, @condition_id, @outcome, @size, @avg_price, @cur_price, @current_value, @title, @slug, @event_slug, @category, @updated_at, @first_seen_at)
+       ON CONFLICT(leader_wallet, condition_id, outcome) DO UPDATE SET
+         size=excluded.size,
+         avg_price=excluded.avg_price,
+         cur_price=excluded.cur_price,
+         current_value=excluded.current_value,
+         title=excluded.title,
+         slug=excluded.slug,
+         event_slug=excluded.event_slug,
+         category=excluded.category,
+         updated_at=excluded.updated_at,
+         first_seen_at=COALESCE(sports_positions_raw.first_seen_at, excluded.first_seen_at)`
     );
+
     const now = Date.now();
+    const seen = new Set<string>();
+
     for (const p of positions) {
+      const key = `${p.conditionId}||${p.outcome ?? ""}`;
+      seen.add(key);
       stmt.run({
         leader_wallet: wallet,
         condition_id: p.conditionId,
@@ -69,8 +89,22 @@ function upsertSportsRows(wallet: string, positions: Position[]) {
         event_slug: p.eventSlug ?? null,
         category: p.category ?? null,
         updated_at: p.updatedAt ?? now,
+        first_seen_at: p.updatedAt ?? now,
       });
     }
+
+    // Remove positions that are no longer open for this wallet
+    for (const key of existingKeys) {
+      if (!seen.has(key)) {
+        const [condition_id, outcome] = key.split("||");
+        db.prepare("DELETE FROM sports_positions_raw WHERE leader_wallet=? AND condition_id=? AND outcome=?").run(
+          wallet,
+          condition_id,
+          outcome
+        );
+      }
+    }
+
     db.prepare(
       "INSERT INTO sports_poll_state(key, value) VALUES('last_success', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
     ).run(String(now));
@@ -150,7 +184,8 @@ export function getAggregatedSportsPositions() {
          SUM(current_value) AS total_usd,
          COUNT(DISTINCT leader_wallet) AS wallet_count,
          GROUP_CONCAT(leader_wallet, ',') AS holders,
-         MAX(updated_at) AS last_updated
+         MAX(updated_at) AS last_updated,
+         MIN(first_seen_at) AS first_seen
        FROM sports_positions_raw
        GROUP BY condition_id, outcome
        ORDER BY total_usd DESC`
@@ -176,6 +211,7 @@ export function getAggregatedSportsPositions() {
         .filter((h: string) => h)
         .slice(0, 5),
       lastUpdated: Number(r.last_updated ?? 0),
+      firstSeen: r.first_seen ? Number(r.first_seen) : null,
     })),
   };
 }

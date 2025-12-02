@@ -373,7 +373,8 @@
         rows.forEach((r) => {
           const tr = document.createElement("tr");
           const updated = r.lastUpdated ? new Date(Number(r.lastUpdated)).toLocaleTimeString() : "-";
-          const isNew = r.lastUpdated && now - Number(r.lastUpdated) <= 60 * 60 * 1000;
+          const firstSeen = r.firstSeen ? Number(r.firstSeen) : null;
+          const isNew = firstSeen ? now - firstSeen <= 60 * 60 * 1000 : false;
           if (isNew) tr.classList.add("new-row");
           tr.innerHTML = `
             <td>${r.title || r.conditionId.slice(0, 8) + "…"}${isNew ? '<span class="new-pill">NEW</span>' : ""}</td>

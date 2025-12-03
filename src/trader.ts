@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import { ClobClient, OrderType, Side, Chain } from "@polymarket/clob-client";
-import { db } from "./db.js";
+import { db, initDb } from "./db.js";
 import {
   LIVE_TRADING_ENABLED,
   LIVE_DRY_RUN,
@@ -20,6 +20,9 @@ type LiveTrade = {
   price: number;
   notional: number;
 };
+
+// Ensure schema (including live_fills) exists before preparing statements
+initDb();
 
 const insertLiveFill = db.prepare(
   `INSERT INTO live_fills(leader_trade_id, leader_wallet, condition_id, side, price, size, notional, status, tx_hash, fee, submitted_at, confirmed_at, created_at, error)

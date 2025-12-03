@@ -448,6 +448,23 @@ async function build() {
     return getRawSportsPositions();
   });
 
+  fastify.post("/api/sports/review", async (req, reply) => {
+    const body = (req.body ?? {}) as any;
+    const conditionId = body.conditionId ?? body.condition_id;
+    const outcome = body.outcome ?? "";
+    if (!conditionId) {
+      reply.status(400).send({ error: "conditionId is required" });
+      return;
+    }
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO sports_reviews(condition_id, outcome, reviewed_at)
+       VALUES(?, ?, ?)
+       ON CONFLICT(condition_id, outcome) DO UPDATE SET reviewed_at=excluded.reviewed_at`
+    ).run(conditionId, outcome, now);
+    return { ok: true, reviewedAt: now };
+  });
+
   fastify.setErrorHandler((error, _request, reply) => {
     console.error("dashboard error", error);
     reply.status(500).send({ error: error.message ?? "internal error" });

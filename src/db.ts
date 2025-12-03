@@ -171,6 +171,15 @@ export function initDb() {
     );
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sports_reviews (
+      condition_id TEXT NOT NULL,
+      outcome TEXT NOT NULL DEFAULT '',
+      reviewed_at INTEGER NOT NULL,
+      PRIMARY KEY(condition_id, outcome)
+    );
+  `);
+
   // Backfill first_seen_at for older deployments
   const sportsCols = db.prepare("PRAGMA table_info(sports_positions_raw)").all() as any[];
   const hasFirstSeen = sportsCols.some((c) => c.name === "first_seen_at");

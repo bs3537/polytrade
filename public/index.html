@@ -159,6 +159,21 @@
         gap: 8px;
         flex-wrap: wrap;
       }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 22px;
+        height: 18px;
+        padding: 0 6px;
+        margin-left: 6px;
+        border-radius: 999px;
+        background: rgba(248, 113, 113, 0.2);
+        color: #fca5a5;
+        font-weight: 700;
+        font-size: 11px;
+        border: 1px solid rgba(248, 113, 113, 0.45);
+      }
       .tab-btn {
         padding: 6px 10px;
         border-radius: 10px;
@@ -172,6 +187,72 @@
         border-color: var(--accent);
         color: var(--accent);
         background: rgba(104, 212, 255, 0.08);
+      }
+      .review-btn {
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(248, 113, 113, 0.5);
+        background: rgba(248, 113, 113, 0.12);
+        color: #fca5a5;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .review-btn:hover {
+        background: rgba(248, 113, 113, 0.2);
+      }
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(11, 18, 32, 0.6);
+        backdrop-filter: blur(4px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 30;
+      }
+      .modal-overlay.active {
+        display: flex;
+      }
+      .modal-card {
+        background: #0f182c;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 18px 16px;
+        width: min(420px, 92vw);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+      }
+      .modal-title {
+        font-size: 17px;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .modal-text {
+        color: var(--muted);
+        margin-bottom: 14px;
+        font-size: 14px;
+      }
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .btn-secondary {
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .btn-primary {
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(104, 212, 255, 0.4);
+        background: rgba(104, 212, 255, 0.18);
+        color: var(--accent);
+        cursor: pointer;
+        font-size: 13px;
       }
       canvas {
         max-width: 100%;
@@ -194,7 +275,7 @@
     <main>
       <div class="tabs" id="main-tabs" style="margin-bottom: 12px">
         <button class="tab-btn active" data-tab="overview">Overview</button>
-        <button class="tab-btn" data-tab="sports">Sports Leaders</button>
+        <button class="tab-btn" data-tab="sports">Sports Leaders <span id="sports-unread" class="chip" style="display:none"></span></button>
       </div>
 
       <div id="overview-section">
@@ -307,6 +388,7 @@
                 <th>Total USD</th>
                 <th>Wallets</th>
                 <th>Updated</th>
+                <th>Review</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -314,6 +396,17 @@
         </div>
       </div>
     </main>
+
+    <div id="review-modal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-title">Mark trade as reviewed?</div>
+        <div class="modal-text" id="review-market">Confirm you have reviewed this trade.</div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="review-cancel">Cancel</button>
+          <button class="btn-primary" id="review-confirm">Yes, mark reviewed</button>
+        </div>
+      </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
@@ -325,6 +418,29 @@
         const res = await fetch(path);
         if (!res.ok) throw new Error(await res.text());
         return res.json();
+      }
+
+      function computeUnreadFromRows(rows, cutoff) {
+        if (!rows || !Array.isArray(rows)) return 0;
+        return rows.reduce((acc, r) => {
+          const firstSeen = r.firstSeen ? Number(r.firstSeen) : null;
+          const reviewed = r.reviewed ?? false;
+          const isUnread = cutoff != null && firstSeen != null && firstSeen > cutoff && !reviewed;
+          return acc + (isUnread ? 1 : 0);
+        }, 0);
+      }
+
+      function updateSportsUnreadBadge(count) {
+        const badge = document.getElementById("sports-unread");
+        if (!badge) return;
+        const value = Number(count || 0);
+        if (value > 0) {
+          badge.textContent = value;
+          badge.style.display = "inline-flex";
+        } else {
+          badge.textContent = "";
+          badge.style.display = "none";
+        }
       }
 
       function renderMetrics(p) {
@@ -369,27 +485,45 @@
       function renderSportsPositions(rows, lastUpdated, cutoff) {
         const body = document.querySelector("#sports-table tbody");
         body.innerHTML = "";
-        const now = Date.now();
         rows.forEach((r) => {
           const tr = document.createElement("tr");
           const updated = r.lastUpdated ? new Date(Number(r.lastUpdated)).toLocaleTimeString() : "-";
           const firstSeen = r.firstSeen ? Number(r.firstSeen) : null;
-          const isNew = firstSeen && cutoff ? firstSeen > cutoff && now - firstSeen <= 60 * 60 * 1000 : false;
-          if (isNew) tr.classList.add("new-row");
+          const reviewed = r.reviewed ?? false;
+          const isUnread = r.isUnread ?? (cutoff != null && firstSeen != null && firstSeen > cutoff && !reviewed);
+          if (isUnread) tr.classList.add("new-row");
+          const title = r.title || r.conditionId.slice(0, 8) + "…";
           tr.innerHTML = `
-            <td>${r.title || r.conditionId.slice(0, 8) + "…"}${isNew ? '<span class="new-pill">NEW</span>' : ""}</td>
+            <td>${title}${isUnread ? '<span class="new-pill">NEW</span>' : ""}</td>
             <td>${r.outcome || ""}</td>
             <td>${fmtNum(r.totalSize)}</td>
             <td>${fmtNum(r.markPrice)}</td>
             <td>${fmtUSD(r.totalUsd)}</td>
             <td>${(r.holders || []).map((h) => h.slice(0, 6) + "…" + h.slice(-4)).join(", ")}</td>
             <td>${updated}</td>
+            <td class="review-cell"></td>
           `;
-        body.appendChild(tr);
-      });
-      const badge = document.getElementById("sports-refresh");
-      const tsLabel = lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "-";
-      badge.textContent = `Sports • Updated ${tsLabel}`;
+          const actionCell = tr.querySelector(".review-cell");
+          const btn = document.createElement("button");
+          btn.className = "review-btn";
+          btn.textContent = reviewed ? "Reviewed" : "Review";
+          btn.disabled = !!reviewed;
+          if (reviewed) btn.style.opacity = "0.6";
+          btn.dataset.cond = r.conditionId;
+          btn.dataset.outcome = r.outcome || "";
+          btn.dataset.title = title;
+          btn.addEventListener("click", () => {
+            if (btn.disabled) return;
+            openReviewModal({ conditionId: btn.dataset.cond, outcome: btn.dataset.outcome, title: btn.dataset.title });
+          });
+          actionCell.appendChild(btn);
+          body.appendChild(tr);
+        });
+
+        updateSportsUnreadBadge(computeUnreadFromRows(rows, cutoff));
+        const badge = document.getElementById("sports-refresh");
+        const tsLabel = lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "-";
+        badge.textContent = `Sports • Updated ${tsLabel}`;
       }
 
       function renderFills(rows) {
@@ -432,9 +566,65 @@
         });
       }
 
+      let pendingReview = null;
+
+      function openReviewModal(row) {
+        pendingReview = row;
+        const modal = document.getElementById("review-modal");
+        const titleEl = document.getElementById("review-market");
+        if (titleEl) titleEl.textContent = row.title || row.conditionId;
+        if (modal) modal.classList.add("active");
+      }
+
+      function closeReviewModal() {
+        pendingReview = null;
+        const modal = document.getElementById("review-modal");
+        if (modal) modal.classList.remove("active");
+      }
+
+      async function confirmReview() {
+        if (!pendingReview) return;
+        try {
+          const res = await fetch("/api/sports/review", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ conditionId: pendingReview.conditionId, outcome: pendingReview.outcome || "" }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const ts = Date.now();
+          const idx = (sportsCache.rows || []).findIndex(
+            (r) => r.conditionId === pendingReview.conditionId && (r.outcome || "") === (pendingReview.outcome || "")
+          );
+          if (idx >= 0) {
+            sportsCache.rows[idx].reviewed = true;
+            sportsCache.rows[idx].reviewedAt = ts;
+            sportsCache.rows[idx].isUnread = false;
+          }
+          updateSportsUnreadBadge(computeUnreadFromRows(sportsCache.rows || [], sportsCache.firstSeenCutoff));
+          if (activeMainTab === "sports") {
+            renderSportsPositions(sportsCache.rows || [], sportsCache.lastUpdated, sportsCache.firstSeenCutoff);
+          }
+        } catch (err) {
+          alert("Failed to mark reviewed: " + err.message);
+        } finally {
+          closeReviewModal();
+        }
+      }
+
+      function bindReviewModal() {
+        const modal = document.getElementById("review-modal");
+        const cancel = document.getElementById("review-cancel");
+        const confirmBtn = document.getElementById("review-confirm");
+        cancel?.addEventListener("click", closeReviewModal);
+        confirmBtn?.addEventListener("click", confirmReview);
+        modal?.addEventListener("click", (e) => {
+          if (e.target === modal) closeReviewModal();
+        });
+      }
+
       let eqChart;
       let currentInterval = 300;
-      let sportsCache = { rows: [], lastUpdated: null };
+      let sportsCache = { rows: [], lastUpdated: null, firstSeenCutoff: null, unreadCount: 0 };
       let leaderPositions = [];
       let activeMainTab = "overview";
 
@@ -483,11 +673,20 @@
       async function loadSports() {
         try {
           const data = await fetchJSON("/api/sports/positions");
-          sportsCache = data;
-          if (positionsTab === "sports") renderSportsPositions(data.rows || [], data.lastUpdated, data.firstSeenCutoff);
+          const unread = data.unreadCount ?? computeUnreadFromRows(data.rows || [], data.firstSeenCutoff);
+          sportsCache = {
+            rows: data.rows || [],
+            lastUpdated: data.lastUpdated ?? null,
+            firstSeenCutoff: data.firstSeenCutoff ?? null,
+            unreadCount: unread,
+          };
+          updateSportsUnreadBadge(unread);
+          if (activeMainTab === "sports") {
+            renderSportsPositions(sportsCache.rows || [], sportsCache.lastUpdated, sportsCache.firstSeenCutoff);
+          }
         } catch (e) {
-          const badge = document.getElementById("pos-refresh");
-          badge.textContent = "Sports • Error";
+          const badge = document.getElementById("sports-refresh");
+          if (badge) badge.textContent = "Sports • Error";
         }
       }
 
@@ -538,6 +737,7 @@
         }
       }
 
+      bindReviewModal();
       bindTabs();
       refresh();
       loadSports();

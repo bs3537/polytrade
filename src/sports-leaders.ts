@@ -182,21 +182,23 @@ export function getAggregatedSportsPositions() {
   const rows = db
     .prepare(
       `SELECT
-         condition_id,
-         outcome,
-         COALESCE(MAX(title), '') AS title,
-         COALESCE(MAX(slug), '') AS slug,
-         COALESCE(MAX(event_slug), '') AS event_slug,
-         COALESCE(MAX(category), '') AS category,
-         SUM(size) AS total_size,
-         AVG(cur_price) AS mark_price,
-         SUM(current_value) AS total_usd,
-         COUNT(DISTINCT leader_wallet) AS wallet_count,
-         GROUP_CONCAT(leader_wallet, ',') AS holders,
-         MAX(updated_at) AS last_updated,
-         MIN(first_seen_at) AS first_seen
-       FROM sports_positions_raw
-       GROUP BY condition_id, outcome
+         sp.condition_id,
+         sp.outcome,
+         COALESCE(MAX(sp.title), '') AS title,
+         COALESCE(MAX(sp.slug), '') AS slug,
+         COALESCE(MAX(sp.event_slug), '') AS event_slug,
+         COALESCE(MAX(sp.category), '') AS category,
+         SUM(sp.size) AS total_size,
+         AVG(sp.cur_price) AS mark_price,
+         SUM(sp.current_value) AS total_usd,
+         COUNT(DISTINCT sp.leader_wallet) AS wallet_count,
+         GROUP_CONCAT(sp.leader_wallet, ',') AS holders,
+         MAX(sp.updated_at) AS last_updated,
+         MIN(sp.first_seen_at) AS first_seen,
+         sr.reviewed_at AS reviewed_at
+       FROM sports_positions_raw sp
+       LEFT JOIN sports_reviews sr ON sr.condition_id = sp.condition_id AND sr.outcome = sp.outcome
+       GROUP BY sp.condition_id, sp.outcome
        ORDER BY total_usd DESC`
     )
     .all();
@@ -204,27 +206,43 @@ export function getAggregatedSportsPositions() {
   const last = db.prepare("SELECT value FROM sports_poll_state WHERE key='last_success'").get() as any;
   const cutoffRow = db.prepare("SELECT value FROM sports_poll_state WHERE key='first_seen_cutoff'").get() as any;
   const firstSeenCutoff = cutoffRow ? Number(cutoffRow.value) : null;
+  let unreadCount = 0;
   return {
     lastUpdated: last ? Number(last.value) : null,
     firstSeenCutoff,
-    rows: rows.map((r: any) => ({
-      conditionId: r.condition_id,
-      outcome: r.outcome,
-      title: r.title || r.condition_id,
-      slug: r.slug || null,
-      eventSlug: r.event_slug || null,
-      category: r.category || null,
-      totalSize: Number(r.total_size ?? 0),
-      markPrice: Number(r.mark_price ?? 0),
-      totalUsd: Number(r.total_usd ?? 0),
-      walletCount: Number(r.wallet_count ?? 0),
-      holders: (r.holders ?? "")
-        .split(",")
-        .filter((h: string) => h)
-        .slice(0, 5),
-      lastUpdated: Number(r.last_updated ?? 0),
-      firstSeen: r.first_seen ? Number(r.first_seen) : null,
-    })),
+    rows: rows.map((r: any) => {
+      const firstSeen = r.first_seen ? Number(r.first_seen) : null;
+      const reviewedAt = r.reviewed_at ? Number(r.reviewed_at) : null;
+      const reviewed = reviewedAt != null && (firstSeen == null || reviewedAt >= firstSeen);
+      const isUnread =
+        firstSeenCutoff != null &&
+        firstSeen != null &&
+        firstSeen > firstSeenCutoff &&
+        !reviewed;
+      if (isUnread) unreadCount += 1;
+      return {
+        conditionId: r.condition_id,
+        outcome: r.outcome,
+        title: r.title || r.condition_id,
+        slug: r.slug || null,
+        eventSlug: r.event_slug || null,
+        category: r.category || null,
+        totalSize: Number(r.total_size ?? 0),
+        markPrice: Number(r.mark_price ?? 0),
+        totalUsd: Number(r.total_usd ?? 0),
+        walletCount: Number(r.wallet_count ?? 0),
+        holders: (r.holders ?? "")
+          .split(",")
+          .filter((h: string) => h)
+          .slice(0, 5),
+        lastUpdated: Number(r.last_updated ?? 0),
+        firstSeen,
+        reviewedAt,
+        reviewed,
+        isUnread,
+      };
+    }),
+    unreadCount,
   };
 }
 

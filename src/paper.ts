@@ -6,11 +6,15 @@ import {
   PAPER_SIZE_MODE,
   HISTORICAL_INGEST_ENABLED,
   PAPER_MODE,
+  MY_WALLET,
 } from "./config.js";
 import {
   fetchMarketByConditionId,
   fetchTradesForWalletPaged,
   fetchLeaderValue,
+  fetchUsdcBalance,
+  fetchPortfolioValue,
+  fetchPositionsForWallet,
 } from "./polymarket.js";
 import { executeLiveTrade } from "./trader.js";
 
@@ -23,6 +27,7 @@ type LeaderTradeRow = {
   size: number;
   price: number;
   timestamp: number;
+  market_title?: string | null;
 };
 
 // Ensure tables exist before preparing statements
@@ -81,6 +86,29 @@ function ensureStartingPortfolio() {
     db.prepare(
       "INSERT INTO paper_portfolio(timestamp, equity, cash, unrealized, realized) VALUES (strftime('%s','now')*1000, ?, ?, 0, 0)"
     ).run(PAPER_START_EQUITY, PAPER_START_EQUITY);
+  }
+}
+
+type CapitalSnapshot = { portfolio: number; cash: number };
+
+const capitalCache = new Map<string, { value: CapitalSnapshot; ts: number }>();
+const CAPITAL_TTL_MS = 30_000;
+
+async function fetchCapitalForWallet(wallet: string): Promise<CapitalSnapshot | null> {
+  if (!wallet) return null;
+  const now = Date.now();
+  const cached = capitalCache.get(wallet);
+  if (cached && now - cached.ts < CAPITAL_TTL_MS) return cached.value;
+
+  try {
+    const positions = await fetchPortfolioValue(wallet); // mark-to-market positions
+    const cash = await fetchUsdcBalance(wallet);
+    const cap = { portfolio: positions + cash, cash };
+    capitalCache.set(wallet, { value: cap, ts: now });
+    return cap;
+  } catch (err) {
+    console.warn(`capital fetch failed for ${wallet}:`, (err as any)?.message ?? err);
+    return null;
   }
 }
 
@@ -176,6 +204,45 @@ function recordFill(t: LeaderTradeRow, size: number, price: number, ruleLabel = 
     size * price * (t.side === "BUY" ? 1 : -1),
     t.timestamp,
     ruleLabel
+  );
+}
+
+function recordCopyEvent(evt: {
+  leaderTradeId: number;
+  leaderWallet: string;
+  conditionId: string;
+  marketTitle?: string | null;
+  side: "BUY" | "SELL";
+  leaderNotional: number;
+  leaderPortfolio: number;
+  leaderPct: number;
+  followerPortfolio: number;
+  targetNotional: number;
+  executedNotional: number;
+  status: string;
+  reason?: string | null;
+  price: number;
+  timestamp: number;
+}) {
+  db.prepare(
+    `INSERT INTO copy_events(leader_trade_id, leader_wallet, condition_id, market_title, side, leader_notional, leader_portfolio, leader_allocation_pct, follower_portfolio, target_notional, executed_notional, status, reason, price, timestamp, created_at)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%s','now')*1000)`
+  ).run(
+    evt.leaderTradeId,
+    evt.leaderWallet,
+    evt.conditionId,
+    evt.marketTitle ?? null,
+    evt.side,
+    evt.leaderNotional,
+    evt.leaderPortfolio,
+    evt.leaderPct,
+    evt.followerPortfolio,
+    evt.targetNotional,
+    evt.executedNotional,
+    evt.status,
+    evt.reason ?? null,
+    evt.price,
+    evt.timestamp
   );
 }
 
@@ -281,7 +348,7 @@ export async function runPaperOnce(opts: RunOpts = {}) {
   const lastId = getLastProcessedId();
   const pending = db
     .prepare(
-      "SELECT id, proxy_wallet, condition_id, asset_id, side, size, price, timestamp FROM leader_trades WHERE id > ? AND timestamp >= ? ORDER BY id ASC"
+      "SELECT id, proxy_wallet, condition_id, asset_id, side, size, price, timestamp, market_title FROM leader_trades WHERE id > ? AND timestamp >= ? ORDER BY id ASC"
     )
     .all(lastId, startTs) as any as LeaderTradeRow[];
 
@@ -290,48 +357,158 @@ export async function runPaperOnce(opts: RunOpts = {}) {
     return;
   }
 
-  const equityNow = currentCash() + getPositionValue();
+  let followerOpenPositions: Record<string, { size: number; mark: number }> | null = null;
+  if (!PAPER_MODE) {
+    try {
+      const pos = await fetchPositionsForWallet(MY_WALLET, { sizeThreshold: 0 });
+      followerOpenPositions = pos.reduce((m, p) => {
+        m[p.conditionId] = { size: p.size, mark: p.markPrice };
+        return m;
+      }, {} as Record<string, { size: number; mark: number }>);
+    } catch (err) {
+      console.warn("Failed to fetch follower positions for sells:", (err as any)?.message ?? err);
+    }
+  }
 
   for (const t of pending) {
     const leaderWallet = t.proxy_wallet.toLowerCase();
     if (!WALLETS.map((w) => w.toLowerCase()).includes(leaderWallet)) continue;
-
     // Determine fill price with simple slippage model
     const slip = PAPER_SLIPPAGE_BPS / 10000;
-    const price =
-      t.side === "BUY" ? t.price * (1 + slip) : t.price * (1 - slip);
+    const price = t.side === "BUY" ? t.price * (1 + slip) : t.price * (1 - slip);
 
-    // Current exposure to avoid shorting on SELL
-    const posRow = db
-      .prepare(
-        "SELECT size, avg_price FROM paper_positions WHERE condition_id=? AND outcome='' AND leader_wallet=?"
-      )
-      .get(t.condition_id, leaderWallet) as any;
-    const currentExposureNotional = posRow ? Number(posRow.size) * Number(posRow.avg_price) : 0;
-
-    // Leader allocation percentage for this trade
     const leaderNotional = t.size * t.price;
-    const leaderValue = await fetchLeaderValueWithRetry(t.proxy_wallet);
-    const leaderPct = leaderValue && leaderValue > 0 ? leaderNotional / leaderValue : 0.05; // fallback 5%
+    const leaderCap = await fetchLeaderValueWithRetry(t.proxy_wallet);
+    const leaderCashCap = await fetchCapitalForWallet(t.proxy_wallet); // includes cash
+    const leaderPortfolio = leaderCashCap?.portfolio ?? leaderCap ?? 0;
 
-    let desiredNotional = leaderPct * equityNow;
-
-    if (t.side === "SELL") {
-      desiredNotional = Math.min(desiredNotional, Math.abs(currentExposureNotional));
-      if (desiredNotional <= 0) continue; // no position to sell
+    if (!leaderPortfolio || leaderPortfolio <= 0) {
+      recordCopyEvent({
+        leaderTradeId: t.id,
+        leaderWallet,
+        conditionId: t.condition_id,
+        marketTitle: t.market_title,
+        side: t.side,
+        leaderNotional,
+        leaderPortfolio: 0,
+        leaderPct: 0,
+        followerPortfolio: 0,
+        targetNotional: 0,
+        executedNotional: 0,
+        status: "SKIPPED",
+        reason: "Leader portfolio unknown",
+        price,
+        timestamp: t.timestamp,
+      });
+      setLastProcessedId(t.id);
+      continue;
     }
+
+    const leaderPct = leaderNotional / leaderPortfolio;
+    if (leaderPct <= 0) {
+      setLastProcessedId(t.id);
+      continue;
+    }
+
+    let followerCap: CapitalSnapshot | null;
+    if (PAPER_MODE) {
+      const cash = currentCash();
+      const posValue = getPositionValue();
+      followerCap = { cash, portfolio: cash + posValue };
+    } else {
+      followerCap = await fetchCapitalForWallet(MY_WALLET);
+    }
+
+    if (!followerCap || followerCap.portfolio <= 0) {
+      recordCopyEvent({
+        leaderTradeId: t.id,
+        leaderWallet,
+        conditionId: t.condition_id,
+        marketTitle: t.market_title,
+        side: t.side,
+        leaderNotional,
+        leaderPortfolio,
+        leaderPct,
+        followerPortfolio: 0,
+        targetNotional: 0,
+        executedNotional: 0,
+        status: "SKIPPED",
+        reason: "Follower portfolio unknown",
+        price,
+        timestamp: t.timestamp,
+      });
+      setLastProcessedId(t.id);
+      continue;
+    }
+
+    let targetNotional = leaderPct * followerCap.portfolio;
+    let executedNotional = targetNotional;
+    let status = "FILLED";
+    let reason: string | null = null;
 
     if (t.side === "BUY") {
-      const cashAvail = currentCash();
-      if (cashAvail <= 0) continue;
-      desiredNotional = Math.min(desiredNotional, cashAvail);
-      if (desiredNotional <= 0) continue;
+      const cashAvail = followerCap.cash;
+      if (cashAvail <= 0) {
+        status = "INSUFFICIENT_FUNDS";
+        executedNotional = 0;
+        reason = "No USDC available";
+      } else if (targetNotional > cashAvail) {
+        status = "INSUFFICIENT_FUNDS";
+        reason = `Needed ${targetNotional.toFixed(2)}, available ${cashAvail.toFixed(2)}`;
+        executedNotional = 0;
+      } else {
+        executedNotional = targetNotional;
+      }
     }
 
-    const copySize = desiredNotional / price;
+    if (t.side === "SELL") {
+      let exposureNotional = 0;
+      if (PAPER_MODE) {
+        const posRow = db
+          .prepare(
+            "SELECT size, avg_price FROM paper_positions WHERE condition_id=? AND outcome='' AND leader_wallet=?"
+          )
+          .get(t.condition_id, leaderWallet) as any;
+        exposureNotional = posRow ? Math.abs(Number(posRow.size) * Number(posRow.avg_price)) : 0;
+      } else if (followerOpenPositions) {
+        const pos = followerOpenPositions[t.condition_id];
+        if (pos) exposureNotional = Math.abs(Number(pos.size) * Number(pos.mark));
+      }
 
-    // Live trading path: mirror allocation on-chain/off-chain.
-    if (!PAPER_MODE) {
+      if (exposureNotional <= 0) {
+        status = "SKIPPED";
+        executedNotional = 0;
+        reason = "No position to sell";
+      } else {
+        executedNotional = Math.min(executedNotional, exposureNotional);
+      }
+    }
+
+    if (executedNotional <= 0) {
+      recordCopyEvent({
+        leaderTradeId: t.id,
+        leaderWallet,
+        conditionId: t.condition_id,
+        marketTitle: t.market_title,
+        side: t.side,
+        leaderNotional,
+        leaderPortfolio,
+        leaderPct,
+        followerPortfolio: followerCap.portfolio,
+        targetNotional,
+        executedNotional: 0,
+        status,
+        reason,
+        price,
+        timestamp: t.timestamp,
+      });
+      setLastProcessedId(t.id);
+      continue;
+    }
+
+    const copySize = executedNotional / price;
+
+    if (!PAPER_MODE && status === "FILLED") {
       try {
         await executeLiveTrade({
           leaderTradeId: t.id,
@@ -341,25 +518,49 @@ export async function runPaperOnce(opts: RunOpts = {}) {
           side: t.side,
           size: copySize,
           price,
-          notional: desiredNotional,
+          notional: executedNotional,
         });
-      } catch (err) {
-        console.error("live trade error", err);
+      } catch (err: any) {
+        status = "FAILED";
+        reason = err?.message ?? "live trade error";
+        executedNotional = 0;
       }
     }
 
-    // cash impact
-    const cashDelta = t.side === "BUY" ? -copySize * price : copySize * price;
-    adjustCash(cashDelta);
+    if (PAPER_MODE && status === "FILLED") {
+      const cashDelta = t.side === "BUY" ? -copySize * price : copySize * price;
+      adjustCash(cashDelta);
 
-    const realizedDelta = upsertPosition(t.condition_id, null, leaderWallet, t.side, copySize, price, t.timestamp);
-    if (realizedDelta !== 0) addRealized(realizedDelta);
-    recordFill(t, copySize, price, "paper");
+      const realizedDelta = upsertPosition(t.condition_id, null, leaderWallet, t.side, copySize, price, t.timestamp);
+      if (realizedDelta !== 0) addRealized(realizedDelta);
+      recordFill(t, copySize, price, "paper");
+    }
+
+    recordCopyEvent({
+      leaderTradeId: t.id,
+      leaderWallet,
+      conditionId: t.condition_id,
+      marketTitle: t.market_title,
+      side: t.side,
+      leaderNotional,
+      leaderPortfolio,
+      leaderPct,
+      followerPortfolio: followerCap.portfolio,
+      targetNotional,
+      executedNotional: status === "FILLED" ? executedNotional : 0,
+      status,
+      reason,
+      price,
+      timestamp: t.timestamp,
+    });
+
     setLastProcessedId(t.id);
   }
 
-  snapshotPortfolio();
-  console.log(`Simulated ${pending.length} leader trades. Portfolio snapshot recorded.`);
+  if (PAPER_MODE) {
+    snapshotPortfolio();
+    console.log(`Simulated ${pending.length} leader trades. Portfolio snapshot recorded.`);
+  }
 }
 
 if (process.argv[1]?.endsWith("paper.ts") || process.argv[1]?.endsWith("paper.js")) {

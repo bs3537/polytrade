@@ -395,6 +395,30 @@ async function build() {
     }
   });
 
+  fastify.get("/api/copies", async (req) => {
+    const limit = Number((req.query as any)?.limit ?? 50);
+    const rows = db
+      .prepare(
+        `SELECT leader_trade_id, leader_wallet, condition_id, market_title, side, leader_notional, leader_portfolio,
+                leader_allocation_pct, follower_portfolio, target_notional, executed_notional, status, reason,
+                price, timestamp
+         FROM copy_events
+         ORDER BY id DESC
+         LIMIT ?`
+      )
+      .all(limit) as any[];
+    return rows.map((r) => ({
+      ...r,
+      leader_notional: Number(r.leader_notional ?? 0),
+      leader_portfolio: Number(r.leader_portfolio ?? 0),
+      leader_allocation_pct: Number(r.leader_allocation_pct ?? 0),
+      follower_portfolio: Number(r.follower_portfolio ?? 0),
+      target_notional: Number(r.target_notional ?? 0),
+      executed_notional: Number(r.executed_notional ?? 0),
+      price: Number(r.price ?? 0),
+    }));
+  });
+
   fastify.get("/api/equity", async (req) => {
     const q = (req.query ?? {}) as any;
     const intervalSec = Number(q.intervalSec ?? 300); // default 5m

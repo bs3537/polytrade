@@ -7,6 +7,7 @@ export const GAMMA_API_BASE = process.env.GAMMA_API_BASE ?? "https://gamma-api.p
 export const DB_PATH = process.env.DB_PATH ?? "./data/trades.db";
 export const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 10000);
 export const MY_WALLET = process.env.MY_WALLET ?? "";
+export const USDC_ADDRESS = process.env.USDC_ADDRESS ?? "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"; // Polygon USDC.e
 export const PAPER_MODE = (process.env.PAPER_MODE ?? "false").toLowerCase() === "true";
 export const PAPER_START_EQUITY = Number(process.env.PAPER_START_EQUITY ?? 100000);
 export const PAPER_SLIPPAGE_BPS = Number(process.env.PAPER_SLIPPAGE_BPS ?? 50); // 0.50%

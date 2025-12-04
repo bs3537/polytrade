@@ -200,6 +200,29 @@
       .review-btn:hover {
         background: rgba(248, 113, 113, 0.2);
       }
+      .status-badge {
+        padding: 4px 8px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        display: inline-block;
+      }
+      .status-filled {
+        background: rgba(45, 212, 191, 0.15);
+        color: #2dd4bf;
+        border: 1px solid rgba(45, 212, 191, 0.5);
+      }
+      .status-insufficient {
+        background: rgba(248, 113, 113, 0.12);
+        color: #fca5a5;
+        border: 1px solid rgba(248, 113, 113, 0.45);
+      }
+      .status-skipped {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--muted);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
       .modal-overlay {
         position: fixed;
         inset: 0;
@@ -284,84 +307,20 @@
       <div class="card" style="margin-top: 14px">
         <div class="row" style="justify-content: space-between; align-items: center">
           <div>
-            <div class="muted">Equity Curve</div>
-            <div class="metric" style="font-size: 18px">Paper account</div>
-          </div>
-          <div class="tabs" id="eq-tabs">
-            <button class="tab-btn active" data-ival="300">5m</button>
-            <button class="tab-btn" data-ival="1800">30m</button>
-            <button class="tab-btn" data-ival="3600">1h</button>
-            <button class="tab-btn" data-ival="86400">1d</button>
-            <button class="tab-btn" data-ival="604800">1w</button>
+            <div class="muted">Copied Trades</div>
+            <div class="metric" style="font-size: 18px">Executed in my wallet</div>
           </div>
         </div>
-        <canvas id="eq-chart" height="120"></canvas>
-      </div>
-
-      <div class="card" style="margin-top: 14px">
-        <div class="row" style="justify-content: space-between; align-items: center">
-          <div>
-            <div class="muted">Open Positions</div>
-            <div class="metric" style="font-size: 18px">Per-leader allocation view</div>
-          </div>
-          <div class="badge">Auto-refresh 5s</div>
-        </div>
-        <table id="positions-table">
-          <thead>
-            <tr>
-              <th>Leader</th>
-              <th>Condition</th>
-              <th>Size</th>
-              <th>Avg Price</th>
-              <th>Unrealized</th>
-              <th>Opened</th>
-              <th>Notional</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="card" style="margin-top: 14px">
-        <div class="row" style="justify-content: space-between; align-items: center">
-          <div>
-            <div class="muted">Recent Paper Fills</div>
-            <div class="metric" style="font-size: 18px">Latest 50</div>
-          </div>
-        </div>
-        <table id="fills-table">
+        <table id="copied-table">
           <thead>
             <tr>
               <th>Time</th>
-              <th>Leader</th>
-              <th>Side</th>
-              <th>Size</th>
-              <th>Price</th>
-              <th>Notional</th>
               <th>Market</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="card" style="margin-top: 14px">
-        <div class="row" style="justify-content: space-between; align-items: center">
-          <div>
-            <div class="muted">Closed / Reduced Positions</div>
-            <div class="metric" style="font-size: 18px">Recent sells</div>
-          </div>
-        </div>
-        <table id="closed-table">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Leader</th>
               <th>Side</th>
-              <th>Size</th>
-              <th>Price</th>
-              <th>Notional</th>
-              <th>Market</th>
+              <th>Leader %</th>
+              <th>My Notional</th>
+              <th>Status</th>
+              <th>Note</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -463,25 +422,6 @@
         });
       }
 
-      function renderPositions(rows) {
-        const body = document.querySelector("#positions-table tbody");
-        body.innerHTML = "";
-        rows.forEach((r) => {
-          const tr = document.createElement("tr");
-          const opened = r.updated_at ? new Date(Number(r.updated_at)).toLocaleTimeString() : "-";
-          tr.innerHTML = `
-            <td>${r.leader_wallet.slice(0, 6)}…${r.leader_wallet.slice(-4)}</td>
-            <td>${r.title || r.condition_id.slice(0, 8) + "…"}</td>
-            <td>${fmtNum(r.size)}</td>
-            <td>${fmtNum(r.avg_price)}</td>
-            <td>${fmtUSD(r.unrealized ?? 0)}</td>
-            <td>${opened}</td>
-            <td>${fmtUSD(r.notional)}</td>
-          `;
-          body.appendChild(tr);
-        });
-      }
-
       function renderSportsPositions(rows, lastUpdated, cutoff) {
         const body = document.querySelector("#sports-table tbody");
         body.innerHTML = "";
@@ -546,21 +486,32 @@
         });
       }
 
-      function renderClosed(rows) {
-        const body = document.querySelector("#closed-table tbody");
+      function renderCopied(rows) {
+        const body = document.querySelector("#copied-table tbody");
+        if (!body) return;
         body.innerHTML = "";
-        rows.forEach((r) => {
+        rows
+          .filter((r) => (r.status || "").toUpperCase() === "FILLED")
+          .forEach((r) => {
           const tr = document.createElement("tr");
+          const ts = r.timestamp ? new Date(Number(r.timestamp)).toLocaleTimeString() : "-";
+          const pct = (Number(r.leader_allocation_pct ?? r.leaderAllocationPct ?? 0) * 100).toFixed(2) + "%";
+          const myNotional = r.executed_notional ?? r.executedNotional ?? 0;
+          const status = (r.status || "").toUpperCase();
+          let cls = "status-skipped";
+          if (status === "FILLED") cls = "status-filled";
+          else if (status === "INSUFFICIENT_FUNDS") cls = "status-insufficient";
+          const note = r.reason || "";
+          const market = r.market_title || r.condition_id || "-";
           const sideColor = r.side === "BUY" ? "var(--success)" : "var(--danger)";
-          const date = new Date(r.timestamp).toLocaleTimeString();
           tr.innerHTML = `
-            <td>${date}</td>
-            <td>${r.leader_wallet.slice(0, 6)}…${r.leader_wallet.slice(-4)}</td>
+            <td>${ts}</td>
+            <td>${market}</td>
             <td style="color:${sideColor}">${r.side}</td>
-            <td>${fmtNum(r.size)}</td>
-            <td>${fmtNum(r.price)}</td>
-            <td>${fmtUSD(r.notional)}</td>
-            <td>${r.title || r.condition_id.slice(0, 8) + "…"}</td>
+            <td>${pct}</td>
+            <td>${fmtUSD(myNotional)}</td>
+            <td><span class="status-badge ${cls}">${status}</span></td>
+            <td>${note || ""}</td>
           `;
           body.appendChild(tr);
         });
@@ -622,53 +573,9 @@
         });
       }
 
-      let eqChart;
-      let currentInterval = 300;
       let sportsCache = { rows: [], lastUpdated: null, firstSeenCutoff: null, unreadCount: 0 };
       let leaderPositions = [];
       let activeMainTab = "overview";
-
-      async function loadEquity(intervalSec = 300) {
-        const data = await fetchJSON(`/api/equity?intervalSec=${intervalSec}&limit=400`);
-        const labels = data.map((d) => new Date(d.timestamp).toLocaleTimeString());
-        const values = data.map((d) => d.equity);
-        if (!eqChart) {
-          const ctx = document.getElementById("eq-chart").getContext("2d");
-          eqChart = new Chart(ctx, {
-            type: "line",
-            data: {
-              labels,
-              datasets: [
-                {
-                  label: "Equity",
-                  data: values,
-                  borderColor: "#68d4ff",
-                  backgroundColor: "rgba(104,212,255,0.1)",
-                  tension: 0.25,
-                  fill: true,
-                },
-              ],
-            },
-            options: {
-              scales: {
-                x: {
-                  ticks: { color: "rgba(255,255,255,0.6)", maxTicksLimit: 6 },
-                  grid: { display: false },
-                },
-                y: {
-                  ticks: { color: "rgba(255,255,255,0.6)" },
-                  grid: { color: "rgba(255,255,255,0.05)" },
-                },
-              },
-              plugins: { legend: { display: false } },
-            },
-          });
-        } else {
-          eqChart.data.labels = labels;
-          eqChart.data.datasets[0].data = values;
-          eqChart.update();
-        }
-      }
 
       async function loadSports() {
         try {
@@ -691,16 +598,6 @@
       }
 
       function bindTabs() {
-        const tabs = document.querySelectorAll("#eq-tabs .tab-btn");
-        tabs.forEach((btn) => {
-          btn.addEventListener("click", () => {
-            tabs.forEach((b) => b.classList.remove("active"));
-            btn.classList.add("active");
-            currentInterval = Number(btn.dataset.ival);
-            loadEquity(currentInterval);
-          });
-        });
-
         const mainTabs = document.querySelectorAll("#main-tabs .tab-btn");
         mainTabs.forEach((btn) => {
           btn.addEventListener("click", () => {
@@ -718,18 +615,12 @@
 
       async function refresh() {
         try {
-          const [portfolio, positions, fills, closed] = await Promise.all([
+          const [portfolio, copies] = await Promise.all([
             fetchJSON("/api/portfolio"),
-            fetchJSON("/api/positions"),
-            fetchJSON("/api/fills?limit=50"),
-            fetchJSON("/api/closed?limit=50"),
+            fetchJSON("/api/copies?limit=100"),
           ]);
-          leaderPositions = positions;
           renderMetrics(portfolio);
-          renderPositions(positions);
-          renderFills(fills);
-          renderClosed(closed);
-          await loadEquity(currentInterval);
+          renderCopied(copies);
           const modeLabel = `${(portfolio.mode || "paper").toUpperCase()} • ${portfolio.source || "paper"}`;
           document.getElementById("updated").textContent = `${modeLabel} • Updated ${new Date().toLocaleTimeString()}`;
         } catch (e) {

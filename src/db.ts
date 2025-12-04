@@ -180,6 +180,28 @@ export function initDb() {
     );
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS copy_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      leader_trade_id INTEGER,
+      leader_wallet TEXT NOT NULL,
+      condition_id TEXT NOT NULL,
+      market_title TEXT,
+      side TEXT NOT NULL,
+      leader_notional REAL,
+      leader_portfolio REAL,
+      leader_allocation_pct REAL,
+      follower_portfolio REAL,
+      target_notional REAL,
+      executed_notional REAL,
+      status TEXT NOT NULL,
+      reason TEXT,
+      price REAL,
+      timestamp INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+  `);
+
   // Backfill first_seen_at for older deployments
   const sportsCols = db.prepare("PRAGMA table_info(sports_positions_raw)").all() as any[];
   const hasFirstSeen = sportsCols.some((c) => c.name === "first_seen_at");

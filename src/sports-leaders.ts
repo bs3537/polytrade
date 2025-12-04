@@ -164,13 +164,37 @@ async function runOnce() {
 }
 
 let timer: NodeJS.Timeout | null = null;
+let running = false;
+
+async function scheduleNext(delay: number) {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(loop, delay);
+}
+
+async function loop() {
+  if (running) {
+    // Skip overlapping runs to avoid DB lock contention
+    await scheduleNext(2000);
+    return;
+  }
+  running = true;
+  try {
+    await runOnce();
+  } catch (err) {
+    console.error("[sports] poll error", err);
+    // small backoff on error
+    await scheduleNext(Math.max(5000, SPORTS_POLL_INTERVAL_MS));
+    running = false;
+    return;
+  }
+  running = false;
+  await scheduleNext(SPORTS_POLL_INTERVAL_MS);
+}
 
 export function startSportsPoller() {
   if (timer || SPORTS_LEADERS.length === 0) return;
   console.log(`Sports poller enabled for ${SPORTS_LEADERS.length} wallets every ${SPORTS_POLL_INTERVAL_MS} ms`);
-  // Kick once immediately, then interval
-  runOnce().catch((err) => console.error("[sports] initial run failed", err));
-  timer = setInterval(() => runOnce().catch((err) => console.error("[sports] poll error", err)), SPORTS_POLL_INTERVAL_MS);
+  loop().catch((err) => console.error("[sports] initial run failed", err));
 }
 
 export function stopSportsPoller() {

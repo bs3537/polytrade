@@ -23,6 +23,8 @@ export const CHAIN_ID = Number(process.env.CHAIN_ID ?? 137);
 export const MAX_GAS_GWEI = Number(process.env.MAX_GAS_GWEI ?? 150);
 export const MIN_BALANCE_MATIC = Number(process.env.MIN_BALANCE_MATIC ?? 0.2);
 export const USE_MY_WALLET_DIRECT = (process.env.USE_MY_WALLET_DIRECT ?? "true").toLowerCase() === "true";
+// Cache wallet gas balance checks to avoid hammering the RPC for every trade
+export const GAS_BALANCE_TTL_MS = Number(process.env.GAS_BALANCE_TTL_MS ?? 120000); // 2 minutes
 
 // Sports leaders feature
 export const SPORTS_LEADERS = (process.env.SPORTS_LEADERS ?? "")

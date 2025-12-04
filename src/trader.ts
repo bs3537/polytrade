@@ -8,6 +8,7 @@ import {
   PRIVATE_KEY,
   MAX_GAS_GWEI,
   MIN_BALANCE_MATIC,
+  GAS_BALANCE_TTL_MS,
 } from "./config.js";
 import { getProvider } from "./provider.js";
 
@@ -44,6 +45,10 @@ async function getClobClient(): Promise<ClobClient> {
   clobClientPromise = (async () => {
     const provider = getProvider();
     const wallet = new ethers.Wallet(PRIVATE_KEY, provider) as any;
+    // ClobClient expects the legacy _signTypedData (ethers v5). Shim it for ethers v6.
+    if (!wallet._signTypedData && wallet.signTypedData) {
+      wallet._signTypedData = wallet.signTypedData.bind(wallet);
+    }
 
     // Derive API creds, then instantiate client with creds set.
     const tmp = new ClobClient(CLOB_HOST, Chain.POLYGON, wallet);
@@ -55,9 +60,27 @@ async function getClobClient(): Promise<ClobClient> {
   return clobClientPromise;
 }
 
+// Cache gas balance lookups to avoid per-trade eth_getBalance spam.
+// Keyed by address so we can extend to multiple wallets if needed.
+const gasCache = new Map<string, { ts: number; balance: bigint }>();
+
 async function ensureGasBalance(provider: ethers.JsonRpcProvider, wallet: ethers.Wallet) {
-  const bal = await provider.getBalance(wallet.address);
+  const now = Date.now();
+  const cache = gasCache.get(wallet.address);
   const minWei = ethers.parseUnits(MIN_BALANCE_MATIC.toString(), "ether");
+
+  if (cache && now - cache.ts < GAS_BALANCE_TTL_MS) {
+    if (cache.balance < minWei) {
+      throw new Error(
+        `Insufficient MATIC for gas: cached balance ${ethers.formatEther(cache.balance)} < min ${MIN_BALANCE_MATIC}`
+      );
+    }
+    return;
+  }
+
+  const bal = await provider.getBalance(wallet.address);
+  gasCache.set(wallet.address, { ts: now, balance: bal });
+
   if (bal < minWei) {
     throw new Error(`Insufficient MATIC for gas: balance ${ethers.formatEther(bal)} < min ${MIN_BALANCE_MATIC}`);
   }

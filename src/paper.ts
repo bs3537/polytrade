@@ -386,7 +386,9 @@ export async function runPaperOnce(opts: RunOpts = {}) {
     const leaderNotional = t.size * t.price;
     const leaderCap = await fetchLeaderValueWithRetry(t.proxy_wallet);
     const leaderCashCap = await fetchCapitalForWallet(t.proxy_wallet); // includes cash
-    const leaderPortfolio = leaderCashCap?.portfolio ?? leaderCap ?? 0;
+    // Protect against under-reported leader portfolio (data/api hiccups) that would inflate % allocation.
+    const rawLeaderPortfolio = leaderCashCap?.portfolio ?? leaderCap ?? 0;
+    const leaderPortfolio = Math.max(rawLeaderPortfolio, leaderNotional);
 
     if (!leaderPortfolio || leaderPortfolio <= 0) {
       recordCopyEvent({

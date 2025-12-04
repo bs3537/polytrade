@@ -400,11 +400,12 @@ async function build() {
     const rows = db
       .prepare(
         `SELECT ce.leader_trade_id, ce.leader_wallet, ce.condition_id,
-                COALESCE(ce.market_title, m.title, ce.condition_id) AS market_title,
+                COALESCE(ce.market_title, lt.market_title, m.title, ce.condition_id) AS market_title,
                 ce.side, ce.leader_notional, ce.leader_portfolio,
                 ce.leader_allocation_pct, ce.follower_portfolio, ce.target_notional, ce.executed_notional,
                 ce.status, ce.reason, ce.price, ce.timestamp
          FROM copy_events ce
+         LEFT JOIN leader_trades lt ON lt.id = ce.leader_trade_id
          LEFT JOIN markets m ON m.condition_id = ce.condition_id
          ORDER BY ce.id DESC
          LIMIT ?`

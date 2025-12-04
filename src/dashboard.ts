@@ -399,11 +399,14 @@ async function build() {
     const limit = Number((req.query as any)?.limit ?? 50);
     const rows = db
       .prepare(
-        `SELECT leader_trade_id, leader_wallet, condition_id, market_title, side, leader_notional, leader_portfolio,
-                leader_allocation_pct, follower_portfolio, target_notional, executed_notional, status, reason,
-                price, timestamp
-         FROM copy_events
-         ORDER BY id DESC
+        `SELECT ce.leader_trade_id, ce.leader_wallet, ce.condition_id,
+                COALESCE(ce.market_title, m.title, ce.condition_id) AS market_title,
+                ce.side, ce.leader_notional, ce.leader_portfolio,
+                ce.leader_allocation_pct, ce.follower_portfolio, ce.target_notional, ce.executed_notional,
+                ce.status, ce.reason, ce.price, ce.timestamp
+         FROM copy_events ce
+         LEFT JOIN markets m ON m.condition_id = ce.condition_id
+         ORDER BY ce.id DESC
          LIMIT ?`
       )
       .all(limit) as any[];

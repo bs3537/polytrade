@@ -491,6 +491,8 @@
         if (!body) return;
         body.innerHTML = "";
         rows
+          .slice()
+          .sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0))
           .filter((r) => (r.status || "").toUpperCase() === "FILLED")
           .forEach((r) => {
           const tr = document.createElement("tr");
@@ -502,7 +504,7 @@
           if (status === "FILLED") cls = "status-filled";
           else if (status === "INSUFFICIENT_FUNDS") cls = "status-insufficient";
           const note = r.reason || "";
-          const market = r.market_title || r.condition_id || "-";
+          const market = r.market_title || r.title || r.condition_id || "-";
           const sideColor = r.side === "BUY" ? "var(--success)" : "var(--danger)";
           tr.innerHTML = `
             <td>${ts}</td>

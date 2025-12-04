@@ -123,6 +123,9 @@ export async function executeLiveTrade(trade: LiveTrade): Promise<string> {
 
     const res = await client.createAndPostOrder(userOrder, {}, OrderType.GTC, false);
     const txHash = res?.orderID ?? res?.orderId ?? res?.hash ?? null;
+    if (!txHash) {
+      throw new Error("Order post returned no order id");
+    }
     insertLiveFill.run({
       ...trade,
       status: "POSTED",

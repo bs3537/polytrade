@@ -66,6 +66,7 @@
         display: grid;
         gap: 14px;
         grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        display: none;
       }
       .card {
         background: var(--card);
@@ -402,25 +403,7 @@
         }
       }
 
-      function renderMetrics(p) {
-        const metrics = document.getElementById("metrics");
-        metrics.innerHTML = "";
-        const cards = [
-          { label: "Equity", value: fmtUSD(p.equity), accent: "var(--accent)" },
-          { label: "Cash", value: fmtUSD(p.cash), accent: "var(--muted)" },
-          { label: "Unrealized", value: fmtUSD(p.unrealized), accent: "var(--warning)" },
-          { label: "Realized", value: fmtUSD(p.realized), accent: "var(--success)" },
-        ];
-        cards.forEach((c) => {
-          const div = document.createElement("div");
-          div.className = "card";
-          div.innerHTML = `
-            <div class="muted">${c.label}</div>
-            <div class="metric" style="color:${c.accent}">${c.value}</div>
-          `;
-          metrics.appendChild(div);
-        });
-      }
+      function renderMetrics(_p) {}
 
       function renderSportsPositions(rows, lastUpdated, cutoff) {
         const body = document.querySelector("#sports-table tbody");
@@ -621,7 +604,6 @@
             fetchJSON("/api/portfolio"),
             fetchJSON("/api/copies?limit=100"),
           ]);
-          renderMetrics(portfolio);
           renderCopied(copies);
           const modeLabel = `${(portfolio.mode || "paper").toUpperCase()} • ${portfolio.source || "paper"}`;
           document.getElementById("updated").textContent = `${modeLabel} • Updated ${new Date().toLocaleTimeString()}`;

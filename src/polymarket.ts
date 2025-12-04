@@ -1,6 +1,7 @@
 import axios from "axios";
 import { ethers } from "ethers";
 import { DATA_API_BASE, GAMMA_API_BASE, RPC_URL, USDC_ADDRESS } from "./config.js";
+import { getProvider } from "./provider.js";
 
 export type Trade = {
   transactionHash: string;
@@ -176,7 +177,7 @@ export async function fetchLeaderValue(userWallet: string): Promise<number> {
 // Fetch USDC.e balance on Polygon (6 decimals) and return as float number of USDC.
 export async function fetchUsdcBalance(wallet: string): Promise<number> {
   if (!RPC_URL) throw new Error("RPC_URL is required to fetch USDC balance");
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  const provider = getProvider();
   const abi = ["function balanceOf(address) view returns (uint256)"]; // minimal ERC20 ABI
   const token = new ethers.Contract(USDC_ADDRESS, abi, provider);
   const bal: bigint = await token.balanceOf(wallet);

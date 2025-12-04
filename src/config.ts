@@ -18,6 +18,8 @@ export const LIVE_TRADING_ENABLED = (process.env.LIVE_TRADING_ENABLED ?? "false"
 export const LIVE_DRY_RUN = (process.env.LIVE_DRY_RUN ?? "true").toLowerCase() === "true";
 export const RPC_URL = process.env.RPC_URL ?? "";
 export const PRIVATE_KEY = process.env.PRIVATE_KEY ?? "";
+// Explicit chain id lets us skip provider network detection (reduces RPC noise/startup errors)
+export const CHAIN_ID = Number(process.env.CHAIN_ID ?? 137);
 export const MAX_GAS_GWEI = Number(process.env.MAX_GAS_GWEI ?? 150);
 export const MIN_BALANCE_MATIC = Number(process.env.MIN_BALANCE_MATIC ?? 0.2);
 export const USE_MY_WALLET_DIRECT = (process.env.USE_MY_WALLET_DIRECT ?? "true").toLowerCase() === "true";

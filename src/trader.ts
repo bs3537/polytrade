@@ -9,6 +9,7 @@ import {
   MAX_GAS_GWEI,
   MIN_BALANCE_MATIC,
 } from "./config.js";
+import { getProvider } from "./provider.js";
 
 type LiveTrade = {
   leaderTradeId: number;
@@ -41,7 +42,7 @@ async function getClobClient(): Promise<ClobClient> {
   if (clobClientPromise) return clobClientPromise;
 
   clobClientPromise = (async () => {
-    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    const provider = getProvider();
     const wallet = new ethers.Wallet(PRIVATE_KEY, provider) as any;
 
     // Derive API creds, then instantiate client with creds set.
@@ -74,7 +75,7 @@ export async function executeLiveTrade(trade: LiveTrade): Promise<string> {
 
   requireEnv();
 
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  const provider = getProvider();
   const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 
   await ensureGasBalance(provider, wallet);

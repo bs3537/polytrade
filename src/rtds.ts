@@ -49,7 +49,7 @@ export function startRTDS(onTrade: Handler) {
         proxyWallet: t.proxyWallet,
         transactionHash: t.transactionHash,
         conditionId: t.conditionId ?? t.conditionIdV2 ?? "",
-        assetId: t.assetId,
+        assetId: t.asset ?? t.assetId ?? t.tokenId ?? t.positionId,
         price: Number(t.price),
         size: Number(t.size),
         side: String(t.side).toUpperCase() === "SELL" ? "SELL" : "BUY",

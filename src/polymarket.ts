@@ -113,7 +113,7 @@ function mapTrade(t: any): Trade {
   return {
     transactionHash: t.transactionHash,
     conditionId: t.conditionId ?? t.conditionIdV2 ?? "",
-    assetId: t.assetId,
+    assetId: t.asset ?? t.assetId ?? t.tokenId ?? t.positionId,
     proxyWallet: t.proxyWallet,
     price: Number(t.price),
     size: Number(t.size),

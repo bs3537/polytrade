@@ -111,6 +111,9 @@ export async function executeLiveTrade(trade: LiveTrade): Promise<string> {
   try {
     const client = await getClobClient();
     const tokenID = trade.assetId ?? trade.conditionId;
+    if (!tokenID) {
+      throw new Error("Missing assetId/tokenID for live trade");
+    }
     const userOrder = {
       tokenID,
       price: trade.price,

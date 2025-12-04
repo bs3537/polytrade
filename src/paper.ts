@@ -7,6 +7,7 @@ import {
   HISTORICAL_INGEST_ENABLED,
   PAPER_MODE,
   MY_WALLET,
+  LIVE_TRADING_ENABLED,
 } from "./config.js";
 import {
   fetchMarketByConditionId,
@@ -298,6 +299,11 @@ type RunOpts = { fetchHistorical?: boolean };
 
 export async function runPaperOnce(opts: RunOpts = {}) {
   const fetchHistorical = opts.fetchHistorical ?? true;
+
+  // If neither paper mode nor live trading is enabled, skip all processing
+  if (!PAPER_MODE && !LIVE_TRADING_ENABLED) {
+    return;
+  }
 
   if (WALLETS.length === 0) {
     console.warn("No WALLETS configured; skipping paper simulation loop.");

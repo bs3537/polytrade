@@ -12,6 +12,9 @@ import {
 } from "./config.js";
 import { getProvider } from "./provider.js";
 
+const POLY_API_KEY = process.env.POLY_API_KEY ?? "";
+const POLY_PASSPHRASE = process.env.POLY_PASSPHRASE ?? "";
+
 type LiveTrade = {
   leaderTradeId: number;
   leaderWallet: string;
@@ -48,6 +51,11 @@ async function getClobClient(): Promise<ClobClient> {
     // ClobClient expects the legacy _signTypedData (ethers v5). Shim it for ethers v6.
     if (!wallet._signTypedData && wallet.signTypedData) {
       wallet._signTypedData = wallet.signTypedData.bind(wallet);
+    }
+
+    if (POLY_API_KEY && POLY_PASSPHRASE) {
+      // Use pre-provided API creds to avoid auth endpoint failures / Cloudflare blocks
+      return new ClobClient(CLOB_HOST, Chain.POLYGON, wallet, { apiKey: POLY_API_KEY, passphrase: POLY_PASSPHRASE }, undefined, wallet.address);
     }
 
     // Derive API creds, then instantiate client with creds set.
